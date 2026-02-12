@@ -1,0 +1,57 @@
+name: AgentStudio 存活性
+description: "验证 /create 后 AgentStudio 在 4936 端口正常存活，且核心 API 可用"
+
+variables:
+  game_id: e2e-alive-test-{{timestamp}}
+  token: e2e-alive-token
+  agentstudio_url: http://localhost:19936
+
+setup:
+  - waitHealthy:
+      timeout: 30s
+  - name: 清理旧状态
+    request:
+      method: POST
+      path: /shutdown/force
+    ignoreError: true
+  - delay: 3s
+  - name: 创建游戏（触发 AgentStudio 启动）
+    request:
+      method: POST
+      path: /create
+      body:
+        game_id: "{{game_id}}"
+        game_name: AgentStudio Alive Test
+        template: phaser-2d
+        token: "{{token}}"
+      timeout: 60s
+    expect:
+      status: 200
+      body:
+        success: 1
+  # AgentStudio 需要时间启动
+  - delay: 15s
+
+teardown:
+  - name: 关闭
+    request:
+      method: POST
+      path: /shutdown/force
+    ignoreError: true
+
+cases:
+  - name: as-mate /api/status 显示 agentStudio running
+    request:
+      method: GET
+      path: /api/status
+    expect:
+      status: 200
+      body:
+        processes.agentStudio.status: running
+
+  - name: as-mate /health 返回正常
+    request:
+      method: GET
+      path: /health
+    expect:
+      status: 200

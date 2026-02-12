@@ -1,0 +1,104 @@
+# 完整生命周期测试套件
+# 迁移自: as-mate/e2e/tests/lifecycle.e2e.ts
+#
+# 验证完整的游戏生命周期：create → 状态检查 → event → shutdown
+
+name: 完整生命周期
+description: 验证完整的游戏生命周期
+sequential: true
+
+variables:
+  game_id: "e2e-lifecycle-{{timestamp}}"
+  token: "e2e-lifecycle-token"
+  template: "phaser-2d"
+
+setup:
+  - waitHealthy:
+      timeout: 60s
+  # 确保干净状态
+  - name: "清理历史游戏"
+    request:
+      method: POST
+      path: /shutdown/force
+    ignoreError: true
+  - delay: 3s
+
+cases:
+  - name: "Step 1: 创建游戏"
+    request:
+      method: POST
+      path: /create
+      body:
+        game_id: "{{config.game_id}}"
+        game_name: "Lifecycle Test"
+        template: "{{config.template}}"
+        token: "{{config.token}}"
+      timeout: 60s
+    expect:
+      status: 200
+      body:
+        success: 0
+
+  - name: "Step 2: 等待进程就绪"
+    delay: 10s
+    request:
+      method: GET
+      path: /api/status
+    expect:
+      body:
+        instance: $exists
+
+  - name: "Step 3: 发送 activity 活动"
+    request:
+      method: POST
+      path: /activity
+      body:
+        source: preview
+    expect:
+      status: 200
+
+  - name: "Step 4: 验证非空闲状态"
+    request:
+      method: GET
+      path: /idle
+    expect:
+      body:
+        idle: false
+
+  - name: "Step 5: 发送事件"
+    request:
+      method: POST
+      path: /event
+      body:
+        type: allow_join
+        data: '{"user_id": "test-user"}'
+    expect:
+      status: 200
+
+  - name: "Step 6: 优雅关闭"
+    request:
+      method: POST
+      path: /shutdown
+      timeout: 120s
+    expect:
+      status: 200
+      body:
+        success: $exists
+
+  - name: "Step 7: 关闭后容器仍健康"
+    delay: 3s
+    request:
+      method: GET
+      path: /livez
+    expect:
+      status: 200
+
+  - name: "Step 8: 关闭后无活跃游戏"
+    delay: 2s
+    request:
+      method: GET
+      path: /health
+    expect:
+      body:
+        game_id: null
+        mode: idle

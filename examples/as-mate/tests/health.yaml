@@ -1,0 +1,49 @@
+# 健康检查测试套件
+# 迁移自: as-mate/e2e/tests/health.e2e.ts
+#
+# 验证容器的健康检查接口是否正常工作
+
+name: 健康检查
+description: 验证容器的各个健康检查接口
+sequential: true
+
+setup:
+  - waitHealthy:
+      timeout: 60s
+
+cases:
+  - name: "GET /livez 返回 200"
+    request:
+      method: GET
+      path: /livez
+    expect:
+      status: 200
+      body:
+        status: ok
+
+  - name: "GET /readyz 返回就绪状态"
+    request:
+      method: GET
+      path: /readyz
+    expect:
+      status: 200
+      body:
+        status: ready
+
+  - name: "GET /health 返回健康信息"
+    request:
+      method: GET
+      path: /health
+    expect:
+      status: [200, 503]
+      body:
+        status: $regex:^(healthy|unhealthy)$
+
+  - name: "GET /idle 返回空闲状态"
+    request:
+      method: GET
+      path: /idle
+    expect:
+      status: 200
+      body:
+        idle: $exists

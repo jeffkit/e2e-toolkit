@@ -1,0 +1,52 @@
+name: Vibe 流程
+description: "验证游戏编辑加载流程：加载游戏 → 验证进程 → 验证编辑模式"
+
+setup:
+  - waitHealthy:
+      timeout: 30s
+  - name: 清理旧状态
+    request:
+      method: POST
+      path: /shutdown/force
+    ignoreError: true
+  - delay: 3s
+
+teardown:
+  - name: 清理
+    request:
+      method: POST
+      path: /shutdown/force
+    ignoreError: true
+
+cases:
+  - name: POST /vibe 请求被正确处理
+    request:
+      method: POST
+      path: /vibe
+      body:
+        game_id: e2e-vibe-test
+        token: e2e-test-token
+      timeout: 120s
+    expect:
+      status: [200, 500]
+      body:
+        success:
+          type: number
+
+  - name: POST /vibe 缺少 game_id 返回 400
+    request:
+      method: POST
+      path: /vibe
+      body:
+        token: some-token
+    expect:
+      status: 400
+
+  - name: POST /vibe 缺少 token 返回 400
+    request:
+      method: POST
+      path: /vibe
+      body:
+        game_id: some-game
+    expect:
+      status: 400

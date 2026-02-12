@@ -1,0 +1,205 @@
+version: "1"
+
+project:
+  name: as-mate
+  description: "AS-Mate E2E 测试"
+  version: "1.0.0"
+
+# Git 仓库（远程模式：自动 clone 到 workspace）
+repos:
+  - name: as-mate
+    url: git@git.woa.com:kongjie/as-mate.git
+    branch: main
+  - name: agentstudio
+    url: git@git.woa.com:thor-family/agentstudio.git
+    branch: main
+  - name: marketplace
+    url: git@git.tencent.com:aw/marketplace.git
+    branch: master
+
+service:
+  build:
+    # 相对于 workspace/repos/ 目录（远程模式下自动解析）
+    dockerfile: as-mate/Dockerfile
+    context: .
+    image: as-mate:e2e
+
+  container:
+    name: as-mate-e2e
+    ports:
+      - "19000:3000"
+      - "19936:4936"
+      - "19173:15173"
+      - "19082:8081"
+    environment:
+      AS_MATE_ENGINE: claude-sdk
+      AS_MATE_PATHS_WORKSPACE: /workspace
+      AS_MATE_PATHS_TEMPLATES: /sandbox/templates
+      AS_MATE_PATHS_AGENTSTUDIO: /app/agentstudio
+      AS_MATE_LOGGING_LEVEL: debug
+      AS_MATE_LOGGING_FORMAT: pretty
+      AS_MATE_IDLE_AUTO_SHUTDOWN: "false"
+      AS_MATE_IDLE_THRESHOLD_SECONDS: "99999"
+      AS_MATE_AUTO_START: "false"
+      AS_MATE_NGINX_ENABLED: "true"
+      AS_MATE_COS_MODE: direct
+      AS_MATE_COS_BUCKET_URL: "https://aw-sg-1400169988.cos.ap-singapore.myqcloud.com"
+      AS_MATE_COS_SECRET_ID: ""
+      AS_MATE_COS_SECRET_KEY: ""
+      AS_MATE_COS_PREFIX: ""
+      AS_MATE_GATEWAY_BASE_URL: "http://as-mate-e2e-mock-gateway:8081"
+      ANTHROPIC_BASE_URL: ""
+      ANTHROPIC_AUTH_TOKEN: ""
+    volumes:
+      - e2e-workspace:/workspace
+    healthcheck:
+      path: /livez
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      startPeriod: 30s
+
+  vars:
+    base_url: http://localhost:19000
+
+mocks:
+  gateway:
+    port: 19081
+    containerPort: 8081
+    routes:
+      - method: POST
+        path: /api/v1/games_save_check
+        response:
+          status: 200
+          body: { status: "success", message: "Save check passed (mock)" }
+      - method: POST
+        path: /api/v1/games_save_success
+        response:
+          status: 200
+          body: { backup_id: "{{timestamp}}" }
+      - method: POST
+        path: /api/v1/games_publish
+        response:
+          status: 200
+          body: { published_version: 1 }
+      - method: POST
+        path: /api/internal/room/event
+        response:
+          status: 200
+          body: { success: 1 }
+      - method: GET
+        path: /api/internal/games/:gameId/collaborators/:openid/permission
+        response:
+          status: 200
+          body:
+            success: true
+            data: { permission: 1, is_owner: true }
+
+tests:
+  suites:
+    - name: 健康检查
+      id: health
+      file: tests/health.yaml
+    - name: Create 流程
+      id: create
+      file: tests/create.yaml
+    - name: Vibe 流程
+      id: vibe
+      file: tests/vibe.yaml
+    - name: Play 流程
+      id: play
+      file: tests/play.yaml
+    - name: 完整生命周期
+      id: lifecycle
+      file: tests/lifecycle.yaml
+    - name: 异常场景
+      id: errors
+      file: tests/errors.yaml
+    - name: AgentStudio 存活性
+      id: agentstudio-alive
+      file: tests/agentstudio-alive.yaml
+
+dashboard:
+  port: 9095
+  uiPort: 9091
+
+  # 环境变量编辑器默认值
+  envDefaults:
+    AS_MATE_ENGINE: claude-sdk
+    AS_MATE_PATHS_WORKSPACE: /workspace
+    AS_MATE_PATHS_TEMPLATES: /sandbox/templates
+    AS_MATE_PATHS_AGENTSTUDIO: /app/agentstudio
+    AS_MATE_LOGGING_LEVEL: debug
+    AS_MATE_LOGGING_FORMAT: pretty
+    AS_MATE_IDLE_AUTO_SHUTDOWN: "false"
+    AS_MATE_IDLE_THRESHOLD_SECONDS: "99999"
+    AS_MATE_AUTO_START: "false"
+    AS_MATE_NGINX_ENABLED: "true"
+    AS_MATE_COS_MODE: direct
+    AS_MATE_COS_BUCKET_URL: "https://aw-sg-1400169988.cos.ap-singapore.myqcloud.com"
+    AS_MATE_COS_SECRET_ID: ""
+    AS_MATE_COS_SECRET_KEY: ""
+    AS_MATE_GATEWAY_BASE_URL: "http://mock-gateway:8081"
+    ANTHROPIC_BASE_URL: ""
+    ANTHROPIC_AUTH_TOKEN: ""
+
+  # 容器内默认浏览目录
+  defaultDirs:
+    - /workspace
+    - /app
+    - /config
+    - /sandbox
+    - /home
+    - /tmp
+
+  # 预定义 API 端点
+  presets:
+    - group: 健康检查
+      endpoints:
+        - { method: GET, path: livez, name: Liveness }
+        - { method: GET, path: readyz, name: Readiness }
+        - { method: GET, path: health, name: Health }
+        - { method: GET, path: idle, name: Idle }
+    - group: 游戏生命周期
+      endpoints:
+        - method: POST
+          path: create
+          name: Create Game
+          body:
+            game_id: e2e-test-game
+            game_name: E2E Test Game
+            template: phaser-2d
+            token: e2e-test-token
+        - method: POST
+          path: vibe
+          name: Vibe (Edit)
+          body:
+            game_id: e2e-test-game
+            token: e2e-test-token
+        - method: POST
+          path: play
+          name: Play
+          body:
+            game_id: e2e-test-game
+        - method: POST
+          path: event
+          name: Event
+          body:
+            type: allow_join
+            data: '{"user_id": "test-user"}'
+        - { method: POST, path: shutdown, name: Shutdown }
+        - { method: POST, path: shutdown/force, name: Force Shutdown }
+        - method: POST
+          path: publish
+          name: Publish
+          body:
+            game_name: E2E Test Game
+    - group: Admin API
+      endpoints:
+        - { method: GET, path: api/status, name: Status }
+        - { method: GET, path: api/metrics, name: Metrics }
+        - { method: GET, path: api/config, name: Config }
+        - { method: GET, path: "api/logs?lines=50", name: Logs }
+
+network:
+  name: e2e-network

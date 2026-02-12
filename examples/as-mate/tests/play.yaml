@@ -1,0 +1,41 @@
+name: Play 流程
+description: "验证游戏只读播放模式：加载游戏 → 验证预览服务"
+
+setup:
+  - waitHealthy:
+      timeout: 30s
+  - name: 清理旧状态
+    request:
+      method: POST
+      path: /shutdown/force
+    ignoreError: true
+  - delay: 3s
+
+teardown:
+  - name: 清理
+    request:
+      method: POST
+      path: /shutdown/force
+    ignoreError: true
+
+cases:
+  - name: POST /play 请求被正确处理
+    request:
+      method: POST
+      path: /play
+      body:
+        game_id: e2e-play-test
+      timeout: 60s
+    expect:
+      status: [200, 500]
+      body:
+        success:
+          type: number
+
+  - name: POST /play 缺少 game_id 返回 400
+    request:
+      method: POST
+      path: /play
+      body: {}
+    expect:
+      status: 400
