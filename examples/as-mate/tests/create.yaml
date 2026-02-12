@@ -1,65 +1,59 @@
-# Create 流程测试套件
-# 迁移自: as-mate/e2e/tests/create.e2e.ts
-#
-# 验证游戏创建流程：创建游戏 → 验证状态 → 验证进程启动
-
 name: Create 流程
-description: 验证游戏创建流程
-sequential: true
+description: "验证游戏创建流程：创建游戏 → 验证状态 → 验证进程启动"
 
 variables:
-  game_id: "e2e-create-{{timestamp}}"
-  token: "e2e-test-token"
-  template: "phaser-2d"
+  game_id: e2e-create-{{timestamp}}
+  token: e2e-test-token
+  template: phaser-2d
 
 setup:
   - waitHealthy:
       timeout: 60s
 
 teardown:
-  - name: "清理：强制关闭"
+  - name: 清理-强制关闭
     request:
       method: POST
       path: /shutdown/force
     ignoreError: true
 
 cases:
-  - name: "POST /create 创建游戏成功"
+  - name: POST /create 创建游戏成功
     request:
       method: POST
       path: /create
       body:
-        game_id: "{{config.game_id}}"
-        game_name: "E2E Create Test"
-        template: "{{config.template}}"
-        token: "{{config.token}}"
+        game_id: "{{game_id}}"
+        game_name: E2E Create Test
+        template: "{{template}}"
+        token: "{{token}}"
       timeout: 60s
     expect:
       status: 200
       body:
         success: 0
 
-  - name: "创建后 /health 显示游戏上下文"
+  - name: 创建后 /health 显示游戏上下文
     delay: 5s
     request:
       method: GET
       path: /health
     expect:
       body:
-        game_id: $exists
-        mode: $exists
+        game_id: exists
+        mode: exists
 
-  - name: "创建后 /api/status 显示进程状态"
+  - name: 创建后 /api/status 显示进程状态
     request:
       method: GET
       path: /api/status
     expect:
       status: 200
       body:
-        instance: $exists
-        processes: $exists
+        instance: exists
+        processes: exists
 
-  - name: "创建后不应处于空闲状态"
+  - name: 创建后不应处于空闲状态
     request:
       method: GET
       path: /idle
@@ -67,11 +61,12 @@ cases:
       body:
         idle: false
 
-  - name: "POST /create 缺少必填字段返回 400"
+  - name: POST /create 缺少必填字段返回 400
     request:
       method: POST
       path: /create
       body:
-        game_id: "{{config.game_id}}"
+        game_id: "{{game_id}}"
+        # 缺少 game_name, template, token
     expect:
       status: 400

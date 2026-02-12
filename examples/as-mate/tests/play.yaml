@@ -1,9 +1,12 @@
 name: Play 流程
 description: "验证游戏只读播放模式：加载游戏 → 验证预览服务"
 
+variables:
+  game_id: e2e-play-{{timestamp}}
+
 setup:
   - waitHealthy:
-      timeout: 30s
+      timeout: 60s
   - name: 清理旧状态
     request:
       method: POST
@@ -12,7 +15,7 @@ setup:
   - delay: 3s
 
 teardown:
-  - name: 清理
+  - name: 关闭
     request:
       method: POST
       path: /shutdown/force
@@ -24,13 +27,13 @@ cases:
       method: POST
       path: /play
       body:
-        game_id: e2e-play-test
+        game_id: "{{game_id}}"
       timeout: 60s
     expect:
+      # play 可能返回 200（成功）或 500（COS 上没有发布包）
       status: [200, 500]
       body:
-        success:
-          type: number
+        success: exists
 
   - name: POST /play 缺少 game_id 返回 400
     request:

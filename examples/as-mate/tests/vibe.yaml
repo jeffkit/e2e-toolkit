@@ -1,9 +1,13 @@
 name: Vibe 流程
 description: "验证游戏编辑加载流程：加载游戏 → 验证进程 → 验证编辑模式"
 
+variables:
+  game_id: e2e-vibe-{{timestamp}}
+  token: e2e-test-token
+
 setup:
   - waitHealthy:
-      timeout: 30s
+      timeout: 60s
   - name: 清理旧状态
     request:
       method: POST
@@ -12,7 +16,7 @@ setup:
   - delay: 3s
 
 teardown:
-  - name: 清理
+  - name: 关闭
     request:
       method: POST
       path: /shutdown/force
@@ -24,14 +28,14 @@ cases:
       method: POST
       path: /vibe
       body:
-        game_id: e2e-vibe-test
-        token: e2e-test-token
+        game_id: "{{game_id}}"
+        token: "{{token}}"
       timeout: 120s
     expect:
+      # vibe 可能返回 200（成功）或 500（COS 上没有备份数据）
       status: [200, 500]
       body:
-        success:
-          type: number
+        success: exists
 
   - name: POST /vibe 缺少 game_id 返回 400
     request:

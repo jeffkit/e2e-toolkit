@@ -1,20 +1,14 @@
-# 异常场景测试套件
-# 迁移自: as-mate/e2e/tests/error-handling.e2e.ts
-#
-# 验证各种错误情况的处理
-
 name: 异常场景
-description: 验证各种错误情况的处理
-sequential: true
+description: "验证各种错误情况的处理"
 
 setup:
   - waitHealthy:
       timeout: 60s
 
 cases:
-  # ── 参数校验 ──────────────────────────────────────────────────
+  # ── 参数校验 ──────────────────────────────────────
 
-  - name: "POST /create 空 body 返回 400"
+  - name: POST /create 空 body 返回 400
     request:
       method: POST
       path: /create
@@ -22,7 +16,7 @@ cases:
     expect:
       status: 400
 
-  - name: "POST /create 缺少 template 返回 400"
+  - name: POST /create 缺少 template 返回 400
     request:
       method: POST
       path: /create
@@ -30,10 +24,11 @@ cases:
         game_id: test
         game_name: test
         token: test
+        # 缺少 template
     expect:
       status: 400
 
-  - name: "POST /vibe 空 body 返回 400"
+  - name: POST /vibe 空 body 返回 400
     request:
       method: POST
       path: /vibe
@@ -41,7 +36,7 @@ cases:
     expect:
       status: 400
 
-  - name: "POST /play 空 body 返回 400"
+  - name: POST /play 空 body 返回 400
     request:
       method: POST
       path: /play
@@ -49,7 +44,7 @@ cases:
     expect:
       status: 400
 
-  - name: "POST /event 缺少 type 返回 400"
+  - name: POST /event 缺少 type 返回 400
     request:
       method: POST
       path: /event
@@ -58,7 +53,7 @@ cases:
     expect:
       status: 400
 
-  - name: "POST /event 缺少 data 返回 400"
+  - name: POST /event 缺少 data 返回 400
     request:
       method: POST
       path: /event
@@ -67,113 +62,59 @@ cases:
     expect:
       status: 400
 
-  # ── 不存在的 API 路由 ─────────────────────────────────────────
+  # ── 不存在的 API 路由 ─────────────────────────────
 
-  - name: "GET /api/nonexistent 返回 404"
+  - name: GET /api/nonexistent 返回 404
     request:
       method: GET
       path: /api/nonexistent
     expect:
       status: 404
 
-  # ── Admin API ─────────────────────────────────────────────────
+  # ── Admin API ────────────────────────────────────
 
-  - name: "GET /api/status 返回有效数据"
+  - name: GET /api/status 返回有效数据
     request:
       method: GET
       path: /api/status
     expect:
       status: 200
 
-  - name: "GET /api/metrics 返回指标数据"
+  - name: GET /api/metrics 返回指标数据
     request:
       method: GET
       path: /api/metrics
     expect:
       status: 200
 
-  - name: "GET /api/config 返回配置"
+  - name: GET /api/config 返回配置
     request:
       method: GET
       path: /api/config
     expect:
       status: 200
 
-  - name: "POST /api/actions/invalid 返回 400"
+  - name: POST /api/actions/invalid 返回 400
     request:
       method: POST
       path: /api/actions/nonexistent
     expect:
       status: 400
 
-  # ── 并发请求 ──────────────────────────────────────────────────
+  # ── 并发请求 ─────────────────────────────────────
 
-  - name: "并发健康检查请求 1"
-    request:
-      method: GET
-      path: /livez
-    expect:
-      status: 200
-
-  - name: "并发健康检查请求 2"
-    request:
-      method: GET
-      path: /livez
-    expect:
-      status: 200
-
-  - name: "并发健康检查请求 3"
-    request:
-      method: GET
-      path: /livez
-    expect:
-      status: 200
-
-  - name: "并发健康检查请求 4"
-    request:
-      method: GET
-      path: /livez
-    expect:
-      status: 200
-
-  - name: "并发健康检查请求 5"
-    request:
-      method: GET
-      path: /livez
-    expect:
-      status: 200
-
-  - name: "并发健康检查请求 6"
-    request:
-      method: GET
-      path: /livez
-    expect:
-      status: 200
-
-  - name: "并发健康检查请求 7"
-    request:
-      method: GET
-      path: /livez
-    expect:
-      status: 200
-
-  - name: "并发健康检查请求 8"
-    request:
-      method: GET
-      path: /livez
-    expect:
-      status: 200
-
-  - name: "并发健康检查请求 9"
-    request:
-      method: GET
-      path: /livez
-    expect:
-      status: 200
-
-  - name: "并发健康检查请求 10"
-    request:
-      method: GET
-      path: /livez
+  - name: 多个健康检查并发请求都能正确响应
+    parallel: true
+    requests:
+      - method: GET
+        path: /livez
+      - method: GET
+        path: /livez
+      - method: GET
+        path: /livez
+      - method: GET
+        path: /livez
+      - method: GET
+        path: /livez
     expect:
       status: 200

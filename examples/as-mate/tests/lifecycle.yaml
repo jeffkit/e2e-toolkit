@@ -1,22 +1,15 @@
-# 完整生命周期测试套件
-# 迁移自: as-mate/e2e/tests/lifecycle.e2e.ts
-#
-# 验证完整的游戏生命周期：create → 状态检查 → event → shutdown
-
 name: 完整生命周期
-description: 验证完整的游戏生命周期
-sequential: true
+description: "验证完整的游戏生命周期：create → 状态检查 → event → shutdown"
 
 variables:
-  game_id: "e2e-lifecycle-{{timestamp}}"
-  token: "e2e-lifecycle-token"
-  template: "phaser-2d"
+  game_id: e2e-lifecycle-{{timestamp}}
+  token: e2e-lifecycle-token
+  template: phaser-2d
 
 setup:
   - waitHealthy:
       timeout: 60s
-  # 确保干净状态
-  - name: "清理历史游戏"
+  - name: 清理旧状态
     request:
       method: POST
       path: /shutdown/force
@@ -29,10 +22,10 @@ cases:
       method: POST
       path: /create
       body:
-        game_id: "{{config.game_id}}"
-        game_name: "Lifecycle Test"
-        template: "{{config.template}}"
-        token: "{{config.token}}"
+        game_id: "{{game_id}}"
+        game_name: Lifecycle Test
+        template: "{{template}}"
+        token: "{{token}}"
       timeout: 60s
     expect:
       status: 200
@@ -45,8 +38,9 @@ cases:
       method: GET
       path: /api/status
     expect:
+      status: 200
       body:
-        instance: $exists
+        instance: exists
 
   - name: "Step 3: 发送 activity 活动"
     request:
@@ -73,6 +67,7 @@ cases:
         type: allow_join
         data: '{"user_id": "test-user"}'
     expect:
+      # event 可能因为 gateway 不可达而失败（mock 模式下应该成功）
       status: 200
 
   - name: "Step 6: 优雅关闭"
@@ -83,7 +78,7 @@ cases:
     expect:
       status: 200
       body:
-        success: $exists
+        success: exists
 
   - name: "Step 7: 关闭后容器仍健康"
     delay: 3s

@@ -1,10 +1,16 @@
 name: AgentStudio 存活性
-description: "验证 /create 后 AgentStudio 在 4936 端口正常存活，且核心 API 可用"
+description: >
+  验证 /create 和 /vibe 之后，AgentStudio 在 4936 端口正常存活，
+  且核心 API 可用。包括 workspace 文件验证、marketplace 同步验证。
 
 variables:
-  game_id: e2e-alive-test-{{timestamp}}
+  game_id: e2e-alive-create-{{timestamp}}
   token: e2e-alive-token
   agentstudio_url: http://localhost:19936
+
+# =====================================================================
+# Create 后 AgentStudio 可用
+# =====================================================================
 
 setup:
   - waitHealthy:
@@ -28,9 +34,14 @@ setup:
     expect:
       status: 200
       body:
-        success: 1
-  # AgentStudio 需要时间启动
-  - delay: 15s
+        success: 0
+  # 等待 AgentStudio 启动（需要时间同步 marketplace + 安装 plugins）
+  - waitForPort:
+      host: localhost
+      port: 19936
+      timeout: 60s
+  # 额外等待 marketplace 同步完成
+  - delay: 5s
 
 teardown:
   - name: 关闭
@@ -40,7 +51,49 @@ teardown:
     ignoreError: true
 
 cases:
-  - name: as-mate /api/status 显示 agentStudio running
+  # ── AgentStudio API 验证 ─────────────────────────
+
+  - name: AgentStudio /api/health 返回 200
+    request:
+      method: GET
+      url: "{{agentstudio_url}}/api/health"
+    expect:
+      status: 200
+      body:
+        status: ok
+        version: exists
+        name: exists
+
+  - name: AgentStudio 前端页面可访问
+    request:
+      method: GET
+      url: "{{agentstudio_url}}/"
+    expect:
+      status: 200
+      body:
+        contains: "<!doctype html>"
+
+  - name: AgentStudio /api/agents 返回 Agent 列表
+    request:
+      method: GET
+      url: "{{agentstudio_url}}/api/agents"
+    expect:
+      status: 200
+      body:
+        agents: type:array
+        agents.length: ">0"
+
+  - name: AgentStudio /api/config 返回配置
+    request:
+      method: GET
+      url: "{{agentstudio_url}}/api/config"
+    expect:
+      status: 200
+      body:
+        success: true
+        config.port: 4936
+
+  - name: as-mate /api/status 显示 agentStudio 进程 running
     request:
       method: GET
       path: /api/status
@@ -49,9 +102,87 @@ cases:
       body:
         processes.agentStudio.status: running
 
-  - name: as-mate /health 返回正常
-    request:
-      method: GET
-      path: /health
+  # ── /workspace 模板文件验证 ──────────────────────
+
+  - name: /workspace 下有 phaser-2d 模板的核心文件
+    exec:
+      command: ls /workspace
     expect:
-      status: 200
+      output:
+        contains:
+          - package.json
+          - index.html
+          - vite.config.ts
+          - src
+
+  - name: /workspace/package.json 内容正确
+    exec:
+      command: cat /workspace/package.json
+    expect:
+      json:
+        name: exists
+        version: exists
+        scripts: exists
+
+  - name: /workspace/src 目录包含游戏源代码
+    exec:
+      command: ls /workspace/src
+    expect:
+      output:
+        contains:
+          - main.ts
+
+  # ── /marketplace 目录验证 ────────────────────────
+
+  - name: /marketplace 目录存在且有内容
+    exec:
+      command: ls /marketplace
+    expect:
+      output:
+        contains:
+          - plugins
+
+  - name: /marketplace/plugins 包含插件目录
+    exec:
+      command: ls /marketplace/plugins
+    expect:
+      output:
+        length: ">0"
+
+  # ── marketplace → ~/.claude 同步验证 ─────────────
+
+  - name: marketplace 内容已同步到 ~/.claude/plugins/marketplaces
+    exec:
+      command: ls /home/agentstudio/.claude/plugins/marketplaces
+    expect:
+      output:
+        contains:
+          - plugins
+
+  - name: marketplace 插件已安装
+    exec:
+      command: ls /home/agentstudio/.claude/plugins/marketplaces/plugins
+    expect:
+      output:
+        length: ">0"
+
+  - name: "~/.claude/skills 有来自 marketplace 的符号链接"
+    exec:
+      command: "ls -la /home/agentstudio/.claude/skills/ | grep marketplaces"
+    expect:
+      output:
+        contains:
+          - marketplaces
+
+  - name: "~/.claude/mcp.json 包含 marketplace 安装的 MCP 服务器"
+    exec:
+      command: cat /home/agentstudio/.claude/mcp.json
+    expect:
+      json:
+        mcpServers: exists
+
+# =====================================================================
+# Vibe 后 AgentStudio 可用（单独的 test suite）
+# =====================================================================
+# 注意：Vibe 场景因需要 COS 备份数据，可能在纯 E2E 环境下失败。
+# 可作为可选测试套件运行。
