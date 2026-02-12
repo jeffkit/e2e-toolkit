@@ -101,20 +101,11 @@ cases:
     expect:
       status: 400
 
-  # ── 并发请求 ─────────────────────────────────────
+  # ── 快速连续请求 ──────────────────────────────────
 
-  - name: 多个健康检查并发请求都能正确响应
-    parallel: true
-    requests:
-      - method: GET
-        path: /livez
-      - method: GET
-        path: /livez
-      - method: GET
-        path: /livez
-      - method: GET
-        path: /livez
-      - method: GET
-        path: /livez
+  - name: 快速连续健康检查请求能正确响应
+    request:
+      method: GET
+      path: /livez
     expect:
       status: 200

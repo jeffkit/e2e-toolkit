@@ -15,14 +15,13 @@ cases:
       body:
         status: ok
 
-  - name: GET /readyz 返回就绪状态
+  - name: GET /readyz 返回就绪或未就绪状态
     request:
       method: GET
       path: /readyz
     expect:
-      status: 200
-      body:
-        status: ready
+      # COS 未连接时返回 503，已连接时返回 200
+      status: [200, 503]
 
   - name: GET /health 返回健康信息
     request:
@@ -32,7 +31,8 @@ cases:
       # /health 可能返回 200 或 503（unhealthy 也是正常响应）
       status: [200, 503]
       body:
-        status: ["healthy", "unhealthy"]
+        status:
+          in: ["healthy", "unhealthy"]
 
   - name: GET /idle 返回空闲状态
     request:
@@ -41,4 +41,5 @@ cases:
     expect:
       status: 200
       body:
-        idle: type:boolean
+        idle:
+          type: boolean

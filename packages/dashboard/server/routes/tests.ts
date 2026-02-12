@@ -8,13 +8,34 @@
 import { type FastifyPluginAsync } from 'fastify';
 import { spawn } from 'child_process';
 import path from 'path';
-import type { E2EConfig, TestSuiteConfig } from '@e2e-toolkit/core';
+import type { E2EConfig, TestSuiteConfig, TestEvent } from '@e2e-toolkit/core';
+import { loadYAMLTests, executeYAMLSuite } from '@e2e-toolkit/core';
 import { getAppState } from '../app-state.js';
 
 /** 去除 ANSI 转义码 */
 function stripAnsi(str: string): string {
   // eslint-disable-next-line no-control-regex
   return str.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '');
+}
+
+/** Format a TestEvent to a human-readable log line */
+function formatTestEvent(event: TestEvent): string {
+  switch (event.type) {
+    case 'suite_start':
+      return `\n=== Suite: ${event.suite} ===\n`;
+    case 'suite_end':
+      return `\n=== ${event.suite}: ${event.passed} passed, ${event.failed} failed (${event.duration}ms) ===\n`;
+    case 'case_start':
+      return `  ▶ ${event.name}`;
+    case 'case_pass':
+      return `  ✓ ${event.name} (${event.duration}ms)`;
+    case 'case_fail':
+      return `  ✗ FAIL: ${event.name} (${event.duration}ms)\n    ${event.error}`;
+    case 'log':
+      return `  [${event.level}] ${event.message}`;
+    default:
+      return JSON.stringify(event);
+  }
 }
 
 interface TestResult {
@@ -91,13 +112,59 @@ export const testRoutes: FastifyPluginAsync = async (app) => {
     };
 
     // Determine how to run the test
-    const runner = suite.runner || 'vitest';
+    const runner = suite.runner || (suite.file?.endsWith('.yaml') || suite.file?.endsWith('.yml') ? 'yaml' : 'vitest');
     const dashboardPort = process.env.E2E_PORT || String(config?.dashboard?.port ?? '9095');
     const dashboardUrl = `http://localhost:${dashboardPort}`;
 
+    // YAML runner: use built-in yaml-engine directly (no subprocess)
+    if (runner === 'yaml') {
+      const testFile = path.resolve(configDir, suite.file || '');
+      const baseUrl = containerUrl;
+
+      // Run async in the background
+      (async () => {
+        try {
+          const yamlSuite = await loadYAMLTests(testFile);
+          const events = executeYAMLSuite(yamlSuite, {
+            baseUrl,
+            variables: { config: {}, runtime: {}, env: { BASE_URL: baseUrl, E2E_DASHBOARD_URL: dashboardUrl } },
+            defaultTimeout: 30_000,
+          });
+
+          for await (const event of events) {
+            const line = formatTestEvent(event);
+            currentTest?.output.push(line);
+          }
+
+          // Determine final status from output
+          if (currentTest) {
+            currentTest.endTime = Date.now();
+            const hasFailure = currentTest.output.some(l => l.includes('FAIL') || l.includes('✗'));
+            currentTest.status = hasFailure ? 'failed' : 'passed';
+            currentTest.exitCode = hasFailure ? 1 : 0;
+            testHistory.unshift(currentTest);
+            if (testHistory.length > 50) testHistory.length = 50;
+            currentTest = null;
+          }
+        } catch (err) {
+          if (currentTest) {
+            currentTest.endTime = Date.now();
+            currentTest.status = 'error';
+            currentTest.exitCode = 1;
+            currentTest.output.push(`Error: ${(err as Error).message}`);
+            testHistory.unshift(currentTest);
+            if (testHistory.length > 50) testHistory.length = 50;
+            currentTest = null;
+          }
+        }
+      })();
+
+      return { success: true, testId, suite: suiteId, runner: 'yaml' };
+    }
+
     let proc;
 
-    if (runner === 'vitest' || runner === undefined) {
+    if (runner === 'vitest') {
       // Default: vitest
       const vitestArgs = [
         'run',
