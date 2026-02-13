@@ -8,6 +8,8 @@
 
 import yaml from 'js-yaml';
 import fs from 'node:fs/promises';
+import { execSync } from 'node:child_process';
+import net from 'node:net';
 import type { YAMLTestSuite, TestStep, TestEvent, VariableContext } from './types.js';
 import { resolveVariables, resolveObjectVariables } from './variable-resolver.js';
 import { assertStatus, assertHeaders, assertBody } from './assertion-engine.js';
@@ -24,6 +26,8 @@ export interface YAMLEngineOptions {
   variables: VariableContext;
   /** Default request timeout in milliseconds (default: 30000) */
   defaultTimeout?: number;
+  /** Container name for exec steps (docker exec) */
+  containerName?: string;
 }
 
 // =====================================================================
@@ -180,7 +184,22 @@ export async function* executeYAMLSuite(
         continue;
       }
 
-      if ('delay' in step && !('request' in step)) {
+      if ('waitForPort' in step) {
+        const portOpts = (step as { waitForPort: { host?: string; port: number; timeout?: string } }).waitForPort;
+        const host = portOpts.host || 'localhost';
+        const port = portOpts.port;
+        const timeout = portOpts.timeout ? parseTime(portOpts.timeout) : 60_000;
+        yield { type: 'log', level: 'info', message: `Waiting for ${host}:${port} to be available...`, timestamp: Date.now() };
+        const available = await waitForPort(host, port, timeout);
+        if (!available) {
+          yield { type: 'log', level: 'error', message: `Port ${host}:${port} did not become available within ${timeout}ms`, timestamp: Date.now() };
+        } else {
+          yield { type: 'log', level: 'info', message: `Port ${host}:${port} is available ✓`, timestamp: Date.now() };
+        }
+        continue;
+      }
+
+      if ('delay' in step && !('request' in step) && !('exec' in step)) {
         const delayStr = (step as { delay: string }).delay;
         const delayMs = parseTime(delayStr);
         yield { type: 'log', level: 'info', message: `Waiting ${delayStr}...`, timestamp: Date.now() };
@@ -191,10 +210,14 @@ export async function* executeYAMLSuite(
       // Regular setup step (TestStep)
       const testStep = step as TestStep;
       try {
-        await executeStep(testStep, options.baseUrl, ctx, defaultTimeout);
+        await executeStep(testStep, options.baseUrl, ctx, defaultTimeout, options.containerName);
         yield { type: 'log', level: 'info', message: `Setup: ${testStep.name} ✓`, timestamp: Date.now() };
       } catch (err) {
-        yield { type: 'log', level: 'error', message: `Setup failed: ${testStep.name}: ${(err as Error).message}`, timestamp: Date.now() };
+        if (testStep.ignoreError) {
+          yield { type: 'log', level: 'warn', message: `Setup (ignored): ${testStep.name}: ${(err as Error).message}`, timestamp: Date.now() };
+        } else {
+          yield { type: 'log', level: 'error', message: `Setup failed: ${testStep.name}: ${(err as Error).message}`, timestamp: Date.now() };
+        }
       }
     }
   }
@@ -214,7 +237,7 @@ export async function* executeYAMLSuite(
       }
 
       // Execute the step and get assertion results
-      const errors = await executeStep(testCase, options.baseUrl, ctx, defaultTimeout);
+      const errors = await executeStep(testCase, options.baseUrl, ctx, defaultTimeout, options.containerName);
 
       if (errors.length > 0) {
         failed++;
@@ -253,7 +276,7 @@ export async function* executeYAMLSuite(
   if (suite.teardown) {
     for (const step of suite.teardown) {
       try {
-        await executeStep(step, options.baseUrl, ctx, defaultTimeout);
+        await executeStep(step, options.baseUrl, ctx, defaultTimeout, options.containerName);
         yield { type: 'log', level: 'info', message: `Teardown: ${step.name} ✓`, timestamp: Date.now() };
       } catch (err) {
         if (!step.ignoreError) {
@@ -279,7 +302,7 @@ export async function* executeYAMLSuite(
 // =====================================================================
 
 /**
- * Execute a single test step: send HTTP request, run assertions, save variables.
+ * Execute a single test step: send HTTP request or run exec command, then run assertions.
  *
  * @returns Array of error messages (empty if all assertions pass)
  */
@@ -288,12 +311,23 @@ async function executeStep(
   baseUrl: string,
   ctx: VariableContext,
   defaultTimeout: number,
+  containerName?: string,
 ): Promise<string[]> {
   // Resolve variables in the step
   const resolvedStep = resolveObjectVariables(step, ctx) as TestStep;
 
-  // Build the URL
-  const url = `${baseUrl}${resolvedStep.request.path}`;
+  // ── Exec step: run command inside Docker container ──
+  if (resolvedStep.exec) {
+    return executeExecStep(resolvedStep, containerName);
+  }
+
+  // ── HTTP request step ──
+  if (!resolvedStep.request) {
+    return [`Step "${resolvedStep.name}" has neither request nor exec`];
+  }
+
+  // Build the URL: prefer explicit url, otherwise baseUrl + path
+  const url = resolvedStep.request.url || `${baseUrl}${resolvedStep.request.path}`;
   const timeout = resolvedStep.request.timeout
     ? parseTime(resolvedStep.request.timeout)
     : defaultTimeout;
@@ -386,6 +420,122 @@ async function executeStep(
   }
 }
 
+/**
+ * Execute a Docker exec step: run a command inside the container and validate output.
+ *
+ * @returns Array of error messages (empty if all assertions pass)
+ */
+function executeExecStep(step: TestStep, containerName?: string): string[] {
+  const execConfig = step.exec!;
+  const container = execConfig.container || containerName;
+
+  if (!container) {
+    return [`Exec step "${step.name}" requires a container name (set containerName in options or exec.container)`];
+  }
+
+  const errors: string[] = [];
+  let output = '';
+  let exitCode = 0;
+
+  try {
+    output = execSync(
+      `docker exec ${container} sh -c ${JSON.stringify(execConfig.command)}`,
+      { encoding: 'utf-8', timeout: 15_000 },
+    ).trim();
+  } catch (err: unknown) {
+    const execErr = err as { stdout?: string; stderr?: string; status?: number; message?: string };
+    output = (execErr.stdout || execErr.stderr || '').trim();
+    exitCode = execErr.status ?? 1;
+
+    // If no expect is defined and command failed, that's an error
+    if (!step.expect) {
+      return [`Exec command failed with exit code ${exitCode}: ${execErr.message || ''}`];
+    }
+  }
+
+  if (!step.expect) {
+    return [];
+  }
+
+  // Assert exit code
+  if (step.expect.exitCode !== undefined && exitCode !== step.expect.exitCode) {
+    errors.push(`Exit code: expected ${step.expect.exitCode}, got ${exitCode}`);
+  }
+
+  // Assert output
+  if (step.expect.output) {
+    const outExpect = step.expect.output;
+
+    // contains
+    if (outExpect.contains) {
+      const patterns = Array.isArray(outExpect.contains) ? outExpect.contains : [outExpect.contains];
+      for (const pattern of patterns) {
+        if (!output.includes(pattern)) {
+          errors.push(`Output does not contain "${pattern}". Output:\n${output.slice(0, 500)}`);
+        }
+      }
+    }
+
+    // notContains
+    if (outExpect.notContains) {
+      const patterns = Array.isArray(outExpect.notContains) ? outExpect.notContains : [outExpect.notContains];
+      for (const pattern of patterns) {
+        if (output.includes(pattern)) {
+          errors.push(`Output should not contain "${pattern}"`);
+        }
+      }
+    }
+
+    // matches (regex)
+    if (outExpect.matches) {
+      const regex = new RegExp(outExpect.matches);
+      if (!regex.test(output)) {
+        errors.push(`Output does not match regex /${outExpect.matches}/. Output:\n${output.slice(0, 500)}`);
+      }
+    }
+
+    // json
+    if (outExpect.json) {
+      try {
+        const parsed = JSON.parse(output);
+        const bodyResults = assertBody(parsed, outExpect.json);
+        for (const result of bodyResults) {
+          if (!result.passed) {
+            errors.push(result.message);
+          }
+        }
+      } catch {
+        errors.push(`Failed to parse output as JSON. Output:\n${output.slice(0, 500)}`);
+      }
+    }
+
+    // length (line count)
+    if (outExpect.length) {
+      const lines = output ? output.split('\n').length : 0;
+      const lengthCheck = outExpect.length;
+      const match = lengthCheck.match(/^([><=!]+)(\d+)$/);
+      if (match) {
+        const op = match[1];
+        const expected = parseInt(match[2], 10);
+        let pass = false;
+        switch (op) {
+          case '>': pass = lines > expected; break;
+          case '<': pass = lines < expected; break;
+          case '>=': pass = lines >= expected; break;
+          case '<=': pass = lines <= expected; break;
+          case '=': case '==': pass = lines === expected; break;
+          case '!=': pass = lines !== expected; break;
+        }
+        if (!pass) {
+          errors.push(`Output line count: expected ${lengthCheck}, got ${lines}`);
+        }
+      }
+    }
+  }
+
+  return errors;
+}
+
 // =====================================================================
 // Internal Helpers
 // =====================================================================
@@ -436,4 +586,36 @@ async function waitForUrl(url: string, timeoutMs: number): Promise<boolean> {
  */
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Wait for a TCP port to become available.
+ */
+async function waitForPort(host: string, port: number, timeoutMs: number): Promise<boolean> {
+  const start = Date.now();
+
+  while (Date.now() - start < timeoutMs) {
+    const isOpen = await new Promise<boolean>((resolve) => {
+      const socket = new net.Socket();
+      socket.setTimeout(2000);
+      socket.once('connect', () => {
+        socket.destroy();
+        resolve(true);
+      });
+      socket.once('error', () => {
+        socket.destroy();
+        resolve(false);
+      });
+      socket.once('timeout', () => {
+        socket.destroy();
+        resolve(false);
+      });
+      socket.connect(port, host);
+    });
+
+    if (isOpen) return true;
+    await sleep(2000);
+  }
+
+  return false;
 }

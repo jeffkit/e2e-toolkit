@@ -153,20 +153,46 @@ export interface TestStep {
   name: string;
   /** 请求前延迟 */
   delay?: string;
-  request: {
+  /** HTTP 请求（与 exec 二选一） */
+  request?: {
     method: string;
     path: string;
+    /** 可选：使用完整 URL 替代 baseUrl + path */
+    url?: string;
     headers?: Record<string, string>;
     body?: unknown;
     timeout?: string;
+  };
+  /** 容器内命令执行（与 request 二选一） */
+  exec?: {
+    command: string;
+    /** 覆盖默认容器名 */
+    container?: string;
   };
   expect?: {
     status?: number | number[];
     headers?: Record<string, unknown>;
     body?: Record<string, unknown>;
+    /** exec 步骤的输出断言 */
+    output?: {
+      /** 输出包含指定字符串 */
+      contains?: string | string[];
+      /** 输出不包含指定字符串 */
+      notContains?: string | string[];
+      /** 正则匹配 */
+      matches?: string;
+      /** 将输出解析为 JSON 并断言 */
+      json?: Record<string, unknown>;
+      /** 输出行数断言 e.g. ">0" */
+      length?: string;
+    };
+    /** exec 步骤的退出码断言 */
+    exitCode?: number;
   };
   /** 保存响应变量 */
   save?: Record<string, string>;
+  /** 忽略错误继续执行 */
+  ignoreError?: boolean;
 }
 
 /** YAML 测试套件定义 */
@@ -175,7 +201,7 @@ export interface YAMLTestSuite {
   description?: string;
   sequential?: boolean;
   variables?: Record<string, string>;
-  setup?: Array<TestStep | { waitHealthy?: { timeout?: string } } | { delay?: string }>;
+  setup?: Array<TestStep | { waitHealthy?: { timeout?: string } } | { waitForPort?: { host?: string; port: number; timeout?: string } } | { delay?: string }>;
   teardown?: Array<TestStep & { ignoreError?: boolean }>;
   cases: TestStep[];
 }

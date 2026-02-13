@@ -125,10 +125,12 @@ export const testRoutes: FastifyPluginAsync = async (app) => {
       (async () => {
         try {
           const yamlSuite = await loadYAMLTests(testFile);
+          const containerName = config?.service?.container?.name || 'e2e-container';
           const events = executeYAMLSuite(yamlSuite, {
             baseUrl,
             variables: { config: {}, runtime: {}, env: { BASE_URL: baseUrl, E2E_DASHBOARD_URL: dashboardUrl } },
             defaultTimeout: 30_000,
+            containerName,
           });
 
           for await (const event of events) {
