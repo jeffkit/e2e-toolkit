@@ -275,6 +275,106 @@ export const testRoutes: FastifyPluginAsync = async (app) => {
     return { success: true, test };
   });
 
+  /** 获取测试套件的 YAML 文件内容及解析后的用例列表 */
+  app.get('/suites/:suiteId/content', async (request) => {
+    const { configDir, config } = getAppState();
+    const { suiteId } = request.params as { suiteId: string };
+
+    const suites = getSuites();
+    const suite = suites[suiteId];
+    if (!suite || suiteId === 'all') {
+      return { success: false, error: `Unknown suite: ${suiteId}` };
+    }
+
+    const filePath = suite.file ? path.resolve(configDir, suite.file) : null;
+    if (!filePath) {
+      return { success: false, error: 'Suite has no file defined' };
+    }
+
+    try {
+      const fs = await import('fs');
+      const raw = fs.readFileSync(filePath, 'utf-8');
+
+      // Also parse to get structured cases
+      let parsed: Record<string, unknown> | null = null;
+      try {
+        const yamlSuite = await loadYAMLTests(filePath);
+        parsed = {
+          name: yamlSuite.name,
+          description: yamlSuite.description,
+          variables: yamlSuite.variables,
+          setup: yamlSuite.setup,
+          teardown: yamlSuite.teardown,
+          cases: yamlSuite.cases,
+          caseCount: yamlSuite.cases.length,
+        };
+      } catch { /* ignore parse errors, still return raw */ }
+
+      return {
+        success: true,
+        raw,
+        parsed,
+        filePath,
+        runner: suite.runner || (suite.file?.endsWith('.yaml') || suite.file?.endsWith('.yml') ? 'yaml' : 'vitest'),
+      };
+    } catch (err) {
+      return {
+        success: false,
+        error: `Failed to read ${filePath}: ${(err as Error).message}`,
+      };
+    }
+  });
+
+  /** 保存测试套件的 YAML 文件内容 */
+  app.put('/suites/:suiteId/content', async (request) => {
+    const { configDir } = getAppState();
+    const { suiteId } = request.params as { suiteId: string };
+    const body = request.body as { content: string };
+
+    const suites = getSuites();
+    const suite = suites[suiteId];
+    if (!suite || suiteId === 'all') {
+      return { success: false, error: `Unknown suite: ${suiteId}` };
+    }
+
+    const filePath = suite.file ? path.resolve(configDir, suite.file) : null;
+    if (!filePath) {
+      return { success: false, error: 'Suite has no file defined' };
+    }
+
+    try {
+      const fs = await import('fs');
+
+      // Backup before saving
+      if (fs.existsSync(filePath)) {
+        fs.copyFileSync(filePath, filePath + '.bak');
+      }
+
+      fs.writeFileSync(filePath, body.content, 'utf-8');
+
+      // Validate the new content
+      try {
+        await loadYAMLTests(filePath);
+      } catch (err) {
+        // Restore backup if validation fails
+        if (fs.existsSync(filePath + '.bak')) {
+          fs.copyFileSync(filePath + '.bak', filePath);
+        }
+        return {
+          success: false,
+          error: `Validation failed: ${(err as Error).message}. Changes reverted.`,
+        };
+      }
+
+      return { success: true, message: 'Test file saved successfully' };
+    } catch (err) {
+      return {
+        success: false,
+        error: `Failed to save: ${(err as Error).message}`,
+      };
+    }
+  });
+
   /** SSE 实时测试输出 */
   app.get('/stream', async (request, reply) => {
     reply.raw.writeHead(200, {

@@ -148,12 +148,64 @@ export interface E2EConfig {
 
 // ==================== 测试类型 ====================
 
+/** 文件断言配置 */
+export interface FileAssertConfig {
+  /** 容器内文件路径 */
+  path: string;
+  /** 覆盖默认容器名 */
+  container?: string;
+  /** 断言文件存在 */
+  exists?: boolean;
+  /** 断言文件内容包含 */
+  contains?: string | string[];
+  /** 断言文件内容不包含 */
+  notContains?: string | string[];
+  /** 正则匹配文件内容 */
+  matches?: string;
+  /** 解析为 JSON 并断言字段 */
+  json?: Record<string, unknown>;
+  /** 检查文件权限（如 "-rwxr-xr-x"） */
+  permissions?: string;
+  /** 检查文件所有者 */
+  owner?: string;
+  /** 检查文件大小（支持 ">0", "<1024" 等） */
+  size?: string;
+}
+
+/** 进程断言配置 */
+export interface ProcessAssertConfig {
+  /** 进程名或匹配模式（用于 grep） */
+  name: string;
+  /** 覆盖默认容器名 */
+  container?: string;
+  /** 断言进程是否在运行 */
+  running?: boolean;
+  /** 断言进程数量 */
+  count?: string; // e.g. ">0", "==1", ">=2"
+  /** 断言进程用户 */
+  user?: string;
+}
+
+/** 端口断言配置 */
+export interface PortAssertConfig {
+  /** 要检查的端口号 */
+  port: number;
+  /** 主机名（默认 localhost） */
+  host?: string;
+  /** 覆盖默认容器名 */
+  container?: string;
+  /** 断言端口是否监听 */
+  listening?: boolean;
+  /** 超时时间（默认 5s） */
+  timeout?: string;
+}
+
 /** YAML 测试用例步骤 */
 export interface TestStep {
   name: string;
   /** 请求前延迟 */
   delay?: string;
-  /** HTTP 请求（与 exec 二选一） */
+  /** HTTP 请求 */
   request?: {
     method: string;
     path: string;
@@ -163,12 +215,18 @@ export interface TestStep {
     body?: unknown;
     timeout?: string;
   };
-  /** 容器内命令执行（与 request 二选一） */
+  /** 容器内命令执行 */
   exec?: {
     command: string;
     /** 覆盖默认容器名 */
     container?: string;
   };
+  /** 容器内文件断言（语义化，底层使用 docker exec） */
+  file?: FileAssertConfig;
+  /** 容器内进程断言 */
+  process?: ProcessAssertConfig;
+  /** 端口监听断言 */
+  port?: PortAssertConfig;
   expect?: {
     status?: number | number[];
     headers?: Record<string, unknown>;
@@ -188,6 +246,12 @@ export interface TestStep {
     };
     /** exec 步骤的退出码断言 */
     exitCode?: number;
+    /** 表达式断言 - 简易 CEL 风格 */
+    expr?: string | string[];
+    /** 复合断言 - 全部通过 (AND) */
+    all?: Array<Record<string, unknown>>;
+    /** 复合断言 - 任一通过 (OR) */
+    any?: Array<Record<string, unknown>>;
   };
   /** 保存响应变量 */
   save?: Record<string, string>;

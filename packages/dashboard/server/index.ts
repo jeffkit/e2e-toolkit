@@ -123,7 +123,7 @@ app.get('/api/health', async () => {
 // Static Files (Production Mode)
 // =====================================================================
 
-const publicDir = path.resolve(__dirname, '../dist/public');
+const publicDir = path.resolve(__dirname, '../public');
 try {
   await app.register(fastifyStatic, {
     root: publicDir,

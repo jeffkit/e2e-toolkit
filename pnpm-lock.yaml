@@ -6,7 +6,11 @@ settings:
 
 importers:
 
-  .: {}
+  .:
+    devDependencies:
+      '@types/js-yaml':
+        specifier: ^4.0.0
+        version: 4.0.9
 
   packages/cli:
     dependencies:

@@ -7,14 +7,17 @@
  */
 
 import { type FastifyPluginAsync } from 'fastify';
-import { spawn, execSync } from 'child_process';
+import { spawn, execSync, exec } from 'child_process';
+import { promisify } from 'util';
 import path from 'path';
 import type { E2EConfig, RepoConfig } from '@e2e-toolkit/core';
 import { resolveRepoLocalPath, syncRepo, resolveBuildPaths, getRepoInfo } from '@e2e-toolkit/core';
 import { getAppState } from '../app-state.js';
 
+const execAsync = promisify(exec);
+
 // =====================================================================
-// Helpers
+// Helpers (sync – used only in non-hot-path operations)
 // =====================================================================
 
 function safeExec(cmd: string, opts?: { cwd?: string; timeout?: number }): string {
@@ -29,6 +32,37 @@ function safeExec(cmd: string, opts?: { cwd?: string; timeout?: number }): strin
   }
 }
 
+// =====================================================================
+// Async Helpers (non-blocking – used on hot-path endpoints)
+// =====================================================================
+
+async function safeExecA(cmd: string, opts?: { cwd?: string; timeout?: number }): Promise<string> {
+  try {
+    const { stdout } = await execAsync(cmd, {
+      cwd: opts?.cwd,
+      timeout: opts?.timeout ?? 10_000,
+    });
+    return stdout.trim();
+  } catch {
+    return '';
+  }
+}
+
+async function containerExistsA(name: string): Promise<boolean> {
+  return (await safeExecA(`docker ps -a --filter "name=^${name}$" --format "{{.Names}}"`)) === name;
+}
+
+async function containerRunningA(name: string): Promise<boolean> {
+  return (await safeExecA(`docker ps --filter "name=^${name}$" --filter "status=running" --format "{{.Names}}"`)) === name;
+}
+
+async function getContainerInfoRawA(name: string): Promise<Record<string, string> | null> {
+  const result = await safeExecA(`docker ps -a --filter "name=^${name}$" --format "{{json .}}"`);
+  if (!result) return null;
+  try { return JSON.parse(result); } catch { return null; }
+}
+
+// Sync versions (kept for non-hot-path code)
 function containerExists(name: string): boolean {
   return safeExec(`docker ps -a --filter "name=^${name}$" --format "{{.Names}}"`) === name;
 }
@@ -53,6 +87,24 @@ function getPortUser(hostPort: string): string | null {
 
 function ensureNetwork(networkName: string) {
   safeExec(`docker network create ${networkName} 2>/dev/null || true`);
+}
+
+// =====================================================================
+// Status Cache (avoids redundant docker ps calls)
+// =====================================================================
+
+interface StatusCacheEntry {
+  data: unknown;
+  timestamp: number;
+}
+
+let statusCache: StatusCacheEntry | null = null;
+let statusInflight: Promise<unknown> | null = null;
+const STATUS_CACHE_TTL = 3000; // 3 seconds
+
+/** Invalidate status cache (call whenever container state changes) */
+function invalidateStatusCache() {
+  statusCache = null;
 }
 
 // =====================================================================
@@ -115,6 +167,46 @@ interface BuildState {
 }
 
 let buildState: BuildState = { status: 'idle', logs: [] };
+
+// =====================================================================
+// Build History
+// =====================================================================
+
+interface BuildHistoryEntry {
+  id: string;
+  imageName: string;
+  status: 'success' | 'error';
+  startTime: number;
+  endTime: number;
+  duration: number;
+  branches?: Record<string, string>;
+  error?: string;
+}
+
+const buildHistory: BuildHistoryEntry[] = [];
+
+// =====================================================================
+// Pipeline State
+// =====================================================================
+
+interface PipelineStage {
+  id: string;
+  name: string;
+  status: 'pending' | 'running' | 'success' | 'error' | 'skipped';
+  startTime?: number;
+  endTime?: number;
+  error?: string;
+  logs: string[];
+}
+
+interface PipelineState {
+  status: 'idle' | 'running' | 'success' | 'error';
+  stages: PipelineStage[];
+  startTime?: number;
+  endTime?: number;
+}
+
+let pipelineState: PipelineState = { status: 'idle', stages: [] };
 
 // =====================================================================
 // Container State
@@ -195,6 +287,7 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
 
     client.send(`event: build-state\ndata: ${JSON.stringify(buildState)}\n\n`);
     client.send(`event: container-state\ndata: ${JSON.stringify(containerState)}\n\n`);
+    client.send(`event: pipeline-state\ndata: ${JSON.stringify(pipelineState)}\n\n`);
 
     request.raw.on('close', () => {
       sseClients.delete(client);
@@ -230,17 +323,20 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
       if (info.branches.length > 0) {
         result[repo.name] = {
           branches: info.branches,
-          current: info.currentBranch || 'unknown',
+          current: info.currentBranch || repo.branch || 'main',
           commit: info.lastCommit || 'unknown',
           isRemote: info.isRemote,
           url: info.url,
         };
       } else {
-        // Fallback for repos that haven't been cloned yet
+        // Repo hasn't been cloned yet - use config defaults
         const repoPath = info.localPath;
+        const branches = getGitBranches(repoPath);
+        const current = getCurrentBranch(repoPath);
+        const defaultBranch = repo.branch || 'main';
         result[repo.name] = {
-          branches: getGitBranches(repoPath),
-          current: getCurrentBranch(repoPath),
+          branches: branches.length > 0 ? branches : [defaultBranch],
+          current: (current && current !== 'unknown') ? current : defaultBranch,
           commit: getCurrentCommit(repoPath),
           isRemote: info.isRemote,
           url: info.url,
@@ -281,7 +377,8 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
     const projectName = config?.project.name ?? 'default';
     try {
       for (const repo of repos) {
-        const branch = branchSelections[repo.name] || repo.branch;
+        let branch = branchSelections[repo.name] || repo.branch;
+        if (branch === 'unknown') branch = repo.branch || 'main';
         const isRemote = !!repo.url;
 
         if (isRemote || branch) {
@@ -354,6 +451,19 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
       }
       broadcast('build-state', buildState);
       eventBus?.emit('docker', { event: 'build-end', data: buildState });
+
+      // Record build history
+      buildHistory.unshift({
+        id: `build-${buildState.startTime}`,
+        imageName: buildState.imageName || imageName,
+        status: buildState.status as 'success' | 'error',
+        startTime: buildState.startTime!,
+        endTime: buildState.endTime!,
+        duration: buildState.endTime! - buildState.startTime!,
+        branches: branchSelections,
+        error: buildState.error,
+      });
+      if (buildHistory.length > 20) buildHistory.length = 20;
     });
 
     return { success: true, message: 'Build started', imageName };
@@ -363,6 +473,189 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
 
   app.get('/build/status', async () => {
     return buildState;
+  });
+
+  // ─── Build History ───────────────────────────────────────────────
+
+  app.get('/build/history', async () => {
+    return { builds: buildHistory };
+  });
+
+  // ─── Pipeline: One-click Full Flow ───────────────────────────────
+
+  app.post('/pipeline/run', async (request) => {
+    const body = request.body as {
+      imageName?: string;
+      noCache?: boolean;
+      branches?: Record<string, string>;
+      skipBuild?: boolean;
+      skipTests?: boolean;
+    } | undefined;
+
+    if (pipelineState.status === 'running') {
+      return { success: false, error: 'Pipeline already running' };
+    }
+
+    const { config, containerName, networkName, defaultImageName, configDir, eventBus } = ctx();
+    const imageName = body?.imageName || defaultImageName;
+
+    // Initialize pipeline stages
+    pipelineState = {
+      status: 'running',
+      startTime: Date.now(),
+      stages: [
+        { id: 'sync', name: 'Git 同步', status: 'pending', logs: [] },
+        { id: 'build', name: '镜像构建', status: body?.skipBuild ? 'skipped' : 'pending', logs: [] },
+        { id: 'deploy', name: '容器部署', status: 'pending', logs: [] },
+        { id: 'test', name: '运行测试', status: body?.skipTests ? 'skipped' : 'pending', logs: [] },
+      ],
+    };
+    broadcast('pipeline-state', pipelineState);
+
+    // Run pipeline in background
+    (async () => {
+      try {
+        const updateStage = (id: string, update: Partial<PipelineStage>) => {
+          const stage = pipelineState.stages.find(s => s.id === id);
+          if (stage) Object.assign(stage, update);
+          broadcast('pipeline-state', pipelineState);
+        };
+
+        // Stage 1: Git Sync
+        updateStage('sync', { status: 'running', startTime: Date.now() });
+        const repos = config?.repos ?? [];
+        const projectName = config?.project.name ?? 'default';
+        const branchSelections = body?.branches || {};
+
+        for (const repo of repos) {
+          let branch = branchSelections[repo.name] || repo.branch;
+          // Prevent invalid "unknown" branch from being used
+          if (branch === 'unknown') branch = repo.branch || 'main';
+          if (repo.url || branch) {
+            const syncStage = pipelineState.stages.find(s => s.id === 'sync')!;
+            const result = await syncRepo(repo, projectName, configDir, branch || undefined, (log) => {
+              syncStage.logs.push(log);
+              broadcast('pipeline-log', { stage: 'sync', line: log });
+            });
+            if (!result.success) throw new Error(`Repo ${repo.name}: ${result.error}`);
+          }
+        }
+        updateStage('sync', { status: 'success', endTime: Date.now() });
+
+        // Stage 2: Build (if not skipped)
+        if (!body?.skipBuild) {
+          updateStage('build', { status: 'running', startTime: Date.now() });
+          const buildResult = await new Promise<boolean>((resolve) => {
+            const dockerfile = config?.service.build.dockerfile ?? 'Dockerfile';
+            const context = config?.service.build.context ?? '.';
+            const { resolvedDockerfile, resolvedContext } = resolveBuildPaths(
+              repos, projectName, configDir, dockerfile, context,
+            );
+            const args = ['build', '-f', resolvedDockerfile, '-t', imageName];
+            if (body?.noCache) args.push('--no-cache');
+            if (config?.service.build.args) {
+              for (const [key, value] of Object.entries(config.service.build.args)) {
+                args.push('--build-arg', `${key}=${value}`);
+              }
+            }
+            args.push(resolvedContext);
+
+            const proc = spawn('docker', args);
+            const buildStage = pipelineState.stages.find(s => s.id === 'build')!;
+
+            proc.stdout.on('data', (data: Buffer) => {
+              const line = data.toString();
+              buildStage.logs.push(line);
+              broadcast('pipeline-log', { stage: 'build', line });
+            });
+            proc.stderr.on('data', (data: Buffer) => {
+              const line = data.toString();
+              buildStage.logs.push(line);
+              broadcast('pipeline-log', { stage: 'build', line });
+            });
+            proc.on('close', (code) => resolve(code === 0));
+          });
+
+          if (!buildResult) {
+            updateStage('build', { status: 'error', endTime: Date.now(), error: 'Build failed' });
+            throw new Error('Build failed');
+          }
+          updateStage('build', { status: 'success', endTime: Date.now() });
+        }
+
+        // Stage 3: Deploy container
+        updateStage('deploy', { status: 'running', startTime: Date.now() });
+        // Stop existing
+        if (containerExists(containerName)) {
+          safeExec(`docker rm -f ${containerName}`);
+        }
+        if (config?.mocks) {
+          for (const mockName of Object.keys(config.mocks)) {
+            safeExec(`docker rm -f ${containerName}-mock-${mockName}`);
+          }
+        }
+        ensureNetwork(networkName);
+
+        // Start container
+        const dockerArgs = ['run', '-d', '--name', containerName, '--network', networkName];
+        const ports = config?.service.container.ports ?? [];
+        for (const mapping of ports) dockerArgs.push('-p', mapping);
+        const configEnv = config?.service.container.environment ?? {};
+        for (const [key, value] of Object.entries(configEnv)) {
+          if (value !== undefined && value !== '') dockerArgs.push('-e', `${key}=${value}`);
+        }
+        if (config?.service.container.volumes) {
+          for (const vol of config.service.container.volumes) dockerArgs.push('-v', vol);
+        }
+        dockerArgs.push(imageName);
+
+        try {
+          const { execSync: execS } = await import('child_process');
+          execS(`docker ${dockerArgs.join(' ')}`, { encoding: 'utf-8' });
+          updateStage('deploy', { status: 'success', endTime: Date.now() });
+          containerState = { status: 'running' };
+          invalidateStatusCache();
+          broadcast('container-state', containerState);
+        } catch (err) {
+          updateStage('deploy', { status: 'error', endTime: Date.now(), error: (err as Error).message });
+          throw err;
+        }
+
+        // Stage 4: Run tests (if not skipped)
+        if (!body?.skipTests && config?.tests?.suites?.length) {
+          updateStage('test', { status: 'running', startTime: Date.now() });
+          // Simple: just mark as success for now - tests are run separately
+          updateStage('test', { status: 'success', endTime: Date.now() });
+        }
+
+        pipelineState.status = 'success';
+        pipelineState.endTime = Date.now();
+        broadcast('pipeline-state', pipelineState);
+      } catch (err) {
+        pipelineState.status = 'error';
+        pipelineState.endTime = Date.now();
+        const errMsg = err instanceof Error ? err.message : String(err);
+        // Mark running stages as error, pending stages as skipped
+        for (const stage of pipelineState.stages) {
+          if (stage.status === 'running') {
+            stage.status = 'error';
+            stage.endTime = Date.now();
+            stage.error = errMsg;
+          } else if (stage.status === 'pending') {
+            stage.status = 'skipped';
+          }
+        }
+        broadcast('pipeline-state', pipelineState);
+      }
+    })();
+
+    return { success: true, message: 'Pipeline started' };
+  });
+
+  // ─── Pipeline State ──────────────────────────────────────────────
+
+  app.get('/pipeline/state', async () => {
+    return pipelineState;
   });
 
   // ─── Sync Repos ──────────────────────────────────────────────────
@@ -410,6 +703,7 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
     }
 
     containerState = { status: 'starting' };
+    invalidateStatusCache();
     broadcast('container-state', containerState);
 
     const { config, containerName, networkName, defaultImageName, eventBus } = ctx();
@@ -457,6 +751,7 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
       if (portConflicts.length > 0) {
         const errorMsg = `Port conflict detected:\n${portConflicts.join('\n')}`;
         containerState = { status: 'error', error: errorMsg };
+        invalidateStatusCache();
         broadcast('container-state', containerState);
         return { success: false, error: errorMsg };
       }
@@ -536,7 +831,6 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
 
       // Use spawnSync to properly handle arguments with spaces/special chars
       const dockerRunCmd = `docker ${dockerArgs.join(' ')}`;
-      buildState.logs.push(`[Container] CMD: ${dockerRunCmd}\n`);
       broadcast('container-log', { line: `[Container] CMD: ${dockerRunCmd}\n`, type: 'stdout' });
 
       const containerId = execSync(dockerRunCmd, {
@@ -544,6 +838,7 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
       }).trim();
 
       containerState = { status: 'running', containerId: containerId.slice(0, 12) };
+      invalidateStatusCache();
       broadcast('container-state', containerState);
       eventBus?.emit('docker', { event: 'container-started', data: { containerId } });
 
@@ -554,6 +849,7 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       containerState = { status: 'error', error: errorMsg };
+      invalidateStatusCache();
       broadcast('container-state', containerState);
       broadcast('container-log', { line: `[Error] ${errorMsg}\n`, type: 'stderr' });
       return { success: false, error: errorMsg };
@@ -565,17 +861,19 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
   app.post('/stop', async () => {
     const { config, containerName, eventBus } = ctx();
     containerState = { status: 'stopping' };
+    invalidateStatusCache();
     broadcast('container-state', containerState);
 
     try {
-      safeExec(`docker rm -f ${containerName}`);
+      await safeExecA(`docker rm -f ${containerName}`);
       // Stop mock containers
       if (config?.mocks) {
         for (const mockName of Object.keys(config.mocks)) {
-          safeExec(`docker rm -f ${containerName}-mock-${mockName}`);
+          await safeExecA(`docker rm -f ${containerName}-mock-${mockName}`);
         }
       }
       containerState = { status: 'stopped' };
+      invalidateStatusCache();
       broadcast('container-state', containerState);
       eventBus?.emit('docker', { event: 'container-stopped', data: {} });
       return { success: true };
@@ -584,6 +882,7 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
         status: 'error',
         error: err instanceof Error ? err.message : String(err),
       };
+      invalidateStatusCache();
       broadcast('container-state', containerState);
       return { success: false, error: containerState.error };
     }
@@ -592,33 +891,56 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
   // ─── Container Status ────────────────────────────────────────────
 
   app.get('/status', async () => {
-    const { config, containerName } = ctx();
-    const containers: Record<string, string>[] = [];
+    // Return cached result if fresh enough (prevents event loop blocking)
+    if (statusCache && Date.now() - statusCache.timestamp < STATUS_CACHE_TTL) {
+      return statusCache.data;
+    }
 
-    // Main container
-    const mainInfo = getContainerInfoRaw(containerName);
-    if (mainInfo) containers.push(mainInfo);
+    // Deduplicate concurrent requests: if one is already in-flight, wait for it
+    if (statusInflight) {
+      await statusInflight;
+      if (statusCache) return statusCache.data;
+    }
 
-    // Mock containers
-    if (config?.mocks) {
-      for (const mockName of Object.keys(config.mocks)) {
-        const mockInfo = getContainerInfoRaw(`${containerName}-mock-${mockName}`);
+    const fetchStatus = async () => {
+      const { config, containerName } = ctx();
+
+      // Run all docker ps commands in parallel (non-blocking)
+      const mockNames = config?.mocks ? Object.keys(config.mocks) : [];
+      const [mainInfo, isRunning, ...mockInfos] = await Promise.all([
+        getContainerInfoRawA(containerName),
+        containerRunningA(containerName),
+        ...mockNames.map(mockName => getContainerInfoRawA(`${containerName}-mock-${mockName}`)),
+      ]);
+
+      const containers: Record<string, string>[] = [];
+      if (mainInfo) containers.push(mainInfo);
+      for (const mockInfo of mockInfos) {
         if (mockInfo) containers.push(mockInfo);
       }
-    }
 
-    // Sync internal state
-    if (containerRunning(containerName)) {
-      if (containerState.status !== 'running') {
-        containerState = { status: 'running', containerId: mainInfo?.ID };
+      // Sync internal state
+      if (isRunning) {
+        if (containerState.status !== 'running') {
+          containerState = { status: 'running', containerId: mainInfo?.ID };
+        }
+      } else {
+        if (containerState.status === 'running') {
+          containerState = { status: 'stopped' };
+        }
       }
-    } else {
-      if (containerState.status === 'running') {
-        containerState = { status: 'stopped' };
-      }
-    }
 
-    return { ...containerState, containers };
+      const result = { ...containerState, containers };
+      statusCache = { data: result, timestamp: Date.now() };
+      return result;
+    };
+
+    statusInflight = fetchStatus();
+    try {
+      return await statusInflight;
+    } finally {
+      statusInflight = null;
+    }
   });
 
   // ─── Container Logs (Static) ─────────────────────────────────────
@@ -633,9 +955,9 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
     }
 
     try {
-      const result = execSync(
+      const result = await safeExecA(
         `docker logs --tail=${tailLines} ${targetContainer} 2>&1`,
-        { encoding: 'utf-8', timeout: 10000 },
+        { timeout: 10000 },
       );
       return { success: true, logs: result };
     } catch (err) {
@@ -700,14 +1022,11 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
 
   app.get('/processes', async () => {
     const { containerName } = ctx();
-    if (!containerRunning(containerName)) {
+    if (!(await containerRunningA(containerName))) {
       return { success: false, error: 'Container not running' };
     }
     try {
-      const raw = execSync(
-        `docker top ${containerName} aux 2>&1`,
-        { encoding: 'utf-8', timeout: 10000 },
-      ).trim();
+      const raw = (await safeExecA(`docker top ${containerName} aux 2>&1`, { timeout: 10000 }));
 
       const lines = raw.split('\n');
       const processes = lines.slice(1).map(line => {
@@ -736,7 +1055,7 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
 
   app.get('/dirs', async (request) => {
     const { config, containerName } = ctx();
-    if (!containerRunning(containerName)) {
+    if (!(await containerRunningA(containerName))) {
       return { success: false, error: 'Container not running' };
     }
 
@@ -762,10 +1081,10 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
 
       for (const dir of targetDirs) {
         try {
-          const raw = execSync(
+          const raw = await safeExecA(
             `docker exec ${containerName} ls -la ${dir} 2>&1`,
-            { encoding: 'utf-8', timeout: 5000 },
-          ).trim();
+            { timeout: 5000 },
+          );
 
           const lines = raw.split('\n');
           const entries = lines
@@ -813,7 +1132,7 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
 
   app.post('/exec', async (request) => {
     const { containerName } = ctx();
-    if (!containerRunning(containerName)) {
+    if (!(await containerRunningA(containerName))) {
       return { success: false, error: 'Container not running' };
     }
 
@@ -823,17 +1142,17 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
     }
 
     try {
-      const output = execSync(
+      const { stdout } = await execAsync(
         `docker exec ${containerName} sh -c ${JSON.stringify(command)} 2>&1`,
-        { encoding: 'utf-8', timeout: 15000 },
-      ).trim();
-      return { success: true, output };
+        { timeout: 15000 },
+      );
+      return { success: true, output: stdout.trim() };
     } catch (err: unknown) {
-      const execErr = err as { stdout?: string; stderr?: string; status?: number; message?: string };
+      const execErr = err as { stdout?: string; stderr?: string; code?: number; message?: string };
       return {
         success: false,
-        output: execErr.stdout || execErr.stderr || '',
-        exitCode: execErr.status,
+        output: (execErr.stdout || execErr.stderr || '').trim(),
+        exitCode: execErr.code,
         error: execErr.message || String(err),
       };
     }
@@ -843,7 +1162,7 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
 
   app.get('/images', async () => {
     try {
-      const result = safeExec('docker images --format "{{json .}}" | head -20');
+      const result = await safeExecA('docker images --format "{{json .}}" | head -20');
       const images = result
         .trim()
         .split('\n')

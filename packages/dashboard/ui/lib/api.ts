@@ -71,6 +71,48 @@ export const docker = {
   getImages: () =>
     request<{ success: boolean; images?: unknown[]; error?: string }>('/docker/images'),
 
+  getBuildHistory: () =>
+    request<{
+      builds: Array<{
+        id: string;
+        imageName: string;
+        status: 'success' | 'error';
+        startTime: number;
+        endTime: number;
+        duration: number;
+        branches?: Record<string, string>;
+        error?: string;
+      }>;
+    }>('/docker/build/history'),
+
+  runPipeline: (options?: {
+    imageName?: string;
+    noCache?: boolean;
+    branches?: Record<string, string>;
+    skipBuild?: boolean;
+    skipTests?: boolean;
+  }) =>
+    request<{ success: boolean; message?: string; error?: string }>('/docker/pipeline/run', {
+      method: 'POST',
+      body: JSON.stringify(options || {}),
+    }),
+
+  getPipelineState: () =>
+    request<{
+      status: string;
+      stages: Array<{
+        id: string;
+        name: string;
+        status: string;
+        startTime?: number;
+        endTime?: number;
+        error?: string;
+        logs: string[];
+      }>;
+      startTime?: number;
+      endTime?: number;
+    }>('/docker/pipeline/state'),
+
   getProcesses: () =>
     request<{ success: boolean; processes?: unknown[]; error?: string }>('/docker/processes'),
 
@@ -144,6 +186,58 @@ export const tests = {
 
   getResult: (testId: string) =>
     request<{ success: boolean; test?: unknown; error?: string }>(`/tests/result/${testId}`),
+
+  getSuiteContent: (suiteId: string) =>
+    request<{
+      success: boolean;
+      raw?: string;
+      parsed?: {
+        name: string;
+        description?: string;
+        variables?: Record<string, string>;
+        setup?: unknown[];
+        teardown?: unknown[];
+        cases: Array<{
+          name: string;
+          delay?: string;
+          request?: { method: string; path: string; body?: unknown; timeout?: string };
+          exec?: { command: string; container?: string };
+          file?: {
+            path: string;
+            exists?: boolean;
+            contains?: string | string[];
+            notContains?: string | string[];
+            matches?: string;
+            json?: Record<string, unknown>;
+            permissions?: string;
+            owner?: string;
+            size?: string;
+          };
+          expect?: {
+            status?: number | number[];
+            body?: Record<string, unknown>;
+            headers?: Record<string, unknown>;
+            output?: Record<string, unknown>;
+            exitCode?: number;
+            expr?: string | string[];
+            all?: Array<Record<string, unknown>>;
+            any?: Array<Record<string, unknown>>;
+          };
+          save?: Record<string, string>;
+          ignoreError?: boolean;
+        }>;
+        caseCount: number;
+      };
+      filePath?: string;
+      runner?: string;
+      error?: string;
+    }>(`/tests/suites/${encodeURIComponent(suiteId)}/content`),
+
+  saveSuiteContent: (suiteId: string, content: string) =>
+    request<{ success: boolean; error?: string }>(`/tests/suites/${encodeURIComponent(suiteId)}/content`, {
+      method: 'PUT',
+      body: JSON.stringify({ content }),
+    }),
 };
 
 // ==================== Config ====================

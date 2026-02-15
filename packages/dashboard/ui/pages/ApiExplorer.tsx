@@ -197,9 +197,9 @@ export function ApiExplorer() {
                         <div className="text-sm font-medium text-gray-800 truncate">{ep.name}</div>
                         <div className="text-xs text-gray-500 font-mono truncate">/{ep.path}</div>
                       </div>
-                      {ep.body && (
-                        <span className="text-xs text-gray-400">编辑</span>
-                      )}
+                    {ep.body != null && (
+                      <span className="text-xs text-gray-400">编辑</span>
+                    )}
                     </button>
                   ))}
                 </div>
@@ -274,7 +274,7 @@ export function ApiExplorer() {
                 </div>
               </div>
               <div className="flex-1 min-h-0 bg-gray-900 rounded-b-lg overflow-auto p-4 font-mono text-xs text-green-400">
-                {selectedResult.requestBody && (
+                {selectedResult.requestBody != null && (
                   <div className="mb-3 pb-3 border-b border-gray-700">
                     <span className="text-gray-500">// Request Body:</span>
                     <pre className="whitespace-pre-wrap text-yellow-300 mt-1">
