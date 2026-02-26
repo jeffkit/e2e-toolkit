@@ -1,9 +1,9 @@
-# Task Breakdown: E2E Testing Toolkit
+# Task Breakdown: Preflight
 
-**Feature Branch**: `001-e2e-toolkit`  
+**Feature Branch**: `001-preflight`  
 **Created**: 2026-02-12  
-**Spec**: `specs/001-e2e-toolkit/spec.md`  
-**Plan**: `specs/001-e2e-toolkit/plan.md`
+**Spec**: `specs/001-preflight/spec.md`  
+**Plan**: `specs/001-preflight/plan.md`
 
 > 每个任务为 1–4 小时可完成的工作单元。依赖关系以 `依赖: TXXX` 标注，可并行的任务以 `⚡ 可并行` 标注。
 
@@ -23,21 +23,21 @@
   - 依赖: 无
 
 - [ ] T002: packages/core 包初始化 (预估: 1h)
-  - 创建 `packages/core/package.json`（`@e2e-toolkit/core`）、`tsconfig.json`、`vitest.config.ts`
+  - 创建 `packages/core/package.json`（`@preflight/core`）、`tsconfig.json`、`vitest.config.ts`
   - 创建 `src/index.ts` barrel export、`src/types.ts` 骨架
   - 创建 `tests/unit/` 和 `tests/integration/` 目录结构
   - 关键文件: `packages/core/package.json`, `packages/core/tsconfig.json`
   - 依赖: T001
 
 - [ ] T003: packages/cli 包初始化 (预估: 1h)
-  - 创建 `packages/cli/package.json`（`@e2e-toolkit/cli`，依赖 `@e2e-toolkit/core: workspace:*`）
-  - 配置 `bin` 入口 (`e2e-toolkit`)、`tsconfig.json`
+  - 创建 `packages/cli/package.json`（`@preflight/cli`，依赖 `@preflight/core: workspace:*`）
+  - 配置 `bin` 入口 (`preflight`)、`tsconfig.json`
   - 创建 `src/index.ts` 骨架
   - 关键文件: `packages/cli/package.json`, `packages/cli/src/index.ts`
   - 依赖: T001
 
 - [ ] T004: packages/dashboard 包初始化 (预估: 1h)
-  - 创建 `packages/dashboard/package.json`（`@e2e-toolkit/dashboard`）
+  - 创建 `packages/dashboard/package.json`（`@preflight/dashboard`）
   - 配置 `vite.config.ts`、`tsconfig.json`、`tsconfig.node.json`
   - 创建 `server/`、`ui/`、`index.html` 骨架
   - 关键文件: `packages/dashboard/package.json`, `packages/dashboard/vite.config.ts`
@@ -378,7 +378,7 @@
 
 ## Phase 3: CLI
 
-**目标**: `e2e-toolkit` 命令行工具可用
+**目标**: `preflight` 命令行工具可用
 
 ### 3.1 CLI 框架
 
@@ -395,7 +395,7 @@
 
 ### 3.2 init 命令
 
-- [ ] T034: `e2e-toolkit init` 命令 + 模板文件 (预估: 2h)
+- [ ] T034: `preflight init` 命令 + 模板文件 (预估: 2h)
   - 在当前目录生成 `e2e.yaml` 模板（交互式或默认）
   - 生成示例测试文件 `tests/health.yaml`
   - 检测已有 Dockerfile，自动填充部分配置
@@ -405,7 +405,7 @@
 
 ### 3.3 setup 命令
 
-- [ ] T035: `e2e-toolkit setup` 命令 (预估: 3h)
+- [ ] T035: `preflight setup` 命令 (预估: 3h)
   - 完整的环境初始化流程:
     1. 依赖检查 (Docker 可用性、Node.js 版本)
     2. 加载配置 (`loadConfig`)
@@ -420,7 +420,7 @@
 
 ### 3.4 build 命令
 
-- [ ] T036: `e2e-toolkit build` 命令 (预估: 1.5h)
+- [ ] T036: `preflight build` 命令 (预估: 1.5h)
   - 加载配置，调用 `DockerEngine.buildImage()`
   - SSE 日志实时输出到终端（通过 sse-printer）
   - 支持 `--no-cache` 选项
@@ -429,7 +429,7 @@
 
 ### 3.5 run 命令
 
-- [ ] T037: `e2e-toolkit run` 命令 (预估: 3h)
+- [ ] T037: `preflight run` 命令 (预估: 3h)
   - 加载配置，使用 `TestOrchestrator` 运行测试
   - 支持 `--suite <id>` 过滤特定套件
   - 支持 `--ci` 模式（无交互、JSON 输出、proper exit code）
@@ -450,8 +450,8 @@
 
 ### 3.7 dashboard 命令
 
-- [ ] T039: `e2e-toolkit dashboard` 命令 (预估: 1h)
-  - 启动 Dashboard 服务（调用 `@e2e-toolkit/dashboard` 的 server 入口）
+- [ ] T039: `preflight dashboard` 命令 (预估: 1h)
+  - 启动 Dashboard 服务（调用 `@preflight/dashboard` 的 server 入口）
   - 支持 `--port <port>` 自定义端口
   - 打开浏览器（可选）
   - 注: 实际 Dashboard 实现在 Phase 4，此处仅实现 CLI 命令壳
@@ -612,12 +612,12 @@
   - 依赖: T041, T044
 
 - [ ] T054: CI 模式优化 (预估: 2h)
-  - `e2e-toolkit run --ci` 确保:
+  - `preflight run --ci` 确保:
     - 无交互提示
     - JSON 报告输出到 stdout
     - 正确的退出码（0/1）
     - 超时控制
-  - `e2e-toolkit clean --ci` 确保:
+  - `preflight clean --ci` 确保:
     - 完整资源清理（无残留容器/网络/卷）
     - 静默模式
   - 关键文件: `packages/cli/src/commands/run.ts`, `packages/cli/src/commands/clean.ts`
@@ -635,7 +635,7 @@
   - `README.md`:
     - 项目简介、特性列表
     - 快速开始（5 分钟上手）
-    - 安装方式 (`npm install -g @e2e-toolkit/cli`)
+    - 安装方式 (`npm install -g @preflight/cli`)
     - 配置参考 (`e2e.yaml` 完整字段说明)
     - CLI 命令参考
     - YAML 测试语法文档
@@ -665,7 +665,7 @@
 |-------|--------|-----------|-----------|
 | Phase 1: Foundation | T001–T023 | ~48h | Core API 可用，YAML 测试可运行 |
 | Phase 2: Mock + SSE | T024–T032 | ~18.5h | Mock 服务生成，SSE 总线，集成测试通过 |
-| Phase 3: CLI | T033–T040 | ~17h | `e2e-toolkit` CLI 全部命令可用 |
+| Phase 3: CLI | T033–T040 | ~17h | `preflight` CLI 全部命令可用 |
 | Phase 4: Dashboard | T041–T050 | ~25.5h | Web Dashboard 可视化面板可用 |
 | Phase 5: Polish | T051–T057 | ~18.5h | 文档完备，覆盖率达标，迁移验证 |
 | **总计** | **57 个任务** | **~127.5h** | |

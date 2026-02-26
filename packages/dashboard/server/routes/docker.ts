@@ -10,8 +10,8 @@ import { type FastifyPluginAsync } from 'fastify';
 import { spawn, execSync, exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
-import type { E2EConfig, RepoConfig } from '@e2e-toolkit/core';
-import { resolveRepoLocalPath, syncRepo, resolveBuildPaths, getRepoInfo } from '@e2e-toolkit/core';
+import type { E2EConfig, RepoConfig } from '@preflight/core';
+import { resolveRepoLocalPath, syncRepo, resolveBuildPaths, getRepoInfo } from '@preflight/core';
 import { getAppState } from '../app-state.js';
 
 const execAsync = promisify(exec);

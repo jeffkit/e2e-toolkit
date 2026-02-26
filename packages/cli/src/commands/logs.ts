@@ -1,6 +1,6 @@
 /**
  * @module commands/logs
- * `e2e-toolkit logs` — View container logs.
+ * `preflight logs` — View container logs.
  *
  * Streams or displays recent logs from the configured container
  * by delegating to the Docker engine's log functions.
@@ -27,7 +27,7 @@ export function registerLogs(program: Command): void {
         loadConfig,
         getContainerLogs,
         streamContainerLogs,
-      } = await import('@e2e-toolkit/core');
+      } = await import('@preflight/core');
 
       const configPath = program.opts().config as string | undefined;
 

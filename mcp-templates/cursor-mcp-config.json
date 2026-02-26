@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "preflight": {
+      "command": "node",
+      "args": [
+        "<ABSOLUTE_PATH_TO_PREFLIGHT>/packages/mcp/dist/index.js"
+      ],
+      "env": {}
+    }
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "yaml.schemas": {
+    "./schemas/e2e-config.schema.json": ["e2e.yaml", "e2e.yml"],
+    "./schemas/test-suite.schema.json": ["tests/*.yaml", "tests/*.yml"]
+  },
+  "json.schemas": [
+    {
+      "fileMatch": [".cursor/mcp.json"],
+      "url": "./mcp-templates/cursor-mcp-config.json"
+    }
+  ],
+  "files.associations": {
+    "e2e.yaml": "yaml",
+    "e2e.yml": "yaml"
+  }
+}

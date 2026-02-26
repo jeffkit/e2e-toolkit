@@ -1,6 +1,6 @@
 /**
  * @module commands/clean
- * `e2e-toolkit clean` — Clean up all test resources.
+ * `preflight clean` — Clean up all test resources.
  *
  * Stops containers, removes networks, and optionally removes volumes/images.
  */
@@ -29,7 +29,7 @@ export function registerClean(program: Command): void {
         loadConfig,
         stopContainer,
         removeNetwork,
-      } = await import('@e2e-toolkit/core');
+      } = await import('@preflight/core');
 
       const configPath = program.opts().config as string | undefined;
 

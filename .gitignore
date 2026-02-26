@@ -3,6 +3,11 @@ dist/
 *.tsbuildinfo
 .env
 .env.*
+!.env.example
 coverage/
 .specify/
 *.log
+.DS_Store
+
+# Real project examples (contain internal URLs/secrets)
+examples/as-mate/

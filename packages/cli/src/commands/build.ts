@@ -1,6 +1,6 @@
 /**
  * @module commands/build
- * `e2e-toolkit build` — Build Docker images.
+ * `preflight build` — Build Docker images.
  *
  * Reads the service.build configuration from e2e.yaml and executes
  * `docker build` with the configured Dockerfile, context, and args.
@@ -26,7 +26,7 @@ export function registerBuild(program: Command): void {
         loadConfig,
         buildImageStreaming,
         buildBuildArgs,
-      } = await import('@e2e-toolkit/core');
+      } = await import('@preflight/core');
 
       const configPath = program.opts().config as string | undefined;
 

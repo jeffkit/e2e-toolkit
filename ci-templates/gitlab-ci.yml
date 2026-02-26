@@ -1,0 +1,106 @@
+# Preflight E2E Testing — GitLab CI Template
+#
+# Usage: Include this template in your .gitlab-ci.yml:
+#   include:
+#     - local: 'ci-templates/gitlab-ci.yml'
+#
+# Override variables as needed:
+#   variables:
+#     PROJECT_PATH: examples/as-mate
+#     TEST_FILTER: health,api
+
+variables:
+  PROJECT_PATH: ''
+  TEST_FILTER: ''
+  ARTIFACT_PATH: test-results
+  NODE_VERSION: '20'
+  PNPM_VERSION: '10'
+
+stages:
+  - install
+  - build
+  - test
+  - cleanup
+
+.preflight_base:
+  image: node:${NODE_VERSION}
+  before_script:
+    - corepack enable
+    - corepack prepare pnpm@${PNPM_VERSION} --activate
+  cache:
+    key:
+      files:
+        - pnpm-lock.yaml
+    paths:
+      - .pnpm-store/
+    policy: pull
+
+preflight:install:
+  extends: .preflight_base
+  stage: install
+  cache:
+    policy: pull-push
+  script:
+    - pnpm config set store-dir .pnpm-store
+    - pnpm install --frozen-lockfile
+
+preflight:build:
+  extends: .preflight_base
+  stage: build
+  services:
+    - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: '/certs'
+  script:
+    - pnpm install --frozen-lockfile
+    - pnpm build
+    - npx preflight build -c ${PROJECT_PATH}/e2e.yaml
+
+preflight:test:
+  extends: .preflight_base
+  stage: test
+  services:
+    - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: '/certs'
+  script:
+    - pnpm install --frozen-lockfile
+    - pnpm build
+    - npx preflight build -c ${PROJECT_PATH}/e2e.yaml
+    - npx preflight setup -c ${PROJECT_PATH}/e2e.yaml
+    - |
+      FILTER_ARG=""
+      if [ -n "${TEST_FILTER}" ]; then
+        FILTER_ARG="--suite ${TEST_FILTER}"
+      fi
+      mkdir -p ${ARTIFACT_PATH}
+      npx preflight run -c ${PROJECT_PATH}/e2e.yaml \
+        --reporter json \
+        ${FILTER_ARG} \
+        > ${ARTIFACT_PATH}/test-results.json
+  after_script:
+    - npx preflight clean -c ${PROJECT_PATH}/e2e.yaml --force || true
+  artifacts:
+    when: always
+    paths:
+      - ${ARTIFACT_PATH}/test-results.json
+    expire_in: 30 days
+    reports:
+      junit: ${ARTIFACT_PATH}/test-results.json
+
+preflight:cleanup:
+  extends: .preflight_base
+  stage: cleanup
+  services:
+    - docker:dind
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: '/certs'
+  when: always
+  allow_failure: true
+  script:
+    - pnpm install --frozen-lockfile
+    - pnpm build
+    - npx preflight clean -c ${PROJECT_PATH}/e2e.yaml --force || true

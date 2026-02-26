@@ -1,6 +1,6 @@
 /**
  * @module config-loader
- * Configuration loader for e2e-toolkit.
+ * Configuration loader for preflight.
  *
  * Loads `e2e.yaml` configuration files, validates them with Zod schemas,
  * supports `.env` file loading and `{{variable}}` substitution.
@@ -20,141 +20,126 @@ import { resolveObjectVariables } from './variable-resolver.js';
 
 /** Healthcheck configuration schema */
 export const HealthcheckSchema = z.object({
-  /** HTTP health check path */
-  path: z.string(),
-  /** Check interval (e.g., "10s") */
-  interval: z.string().default('10s'),
-  /** Timeout per check (e.g., "5s") */
-  timeout: z.string().default('5s'),
-  /** Number of retries before unhealthy */
-  retries: z.number().default(10),
-  /** Initial grace period (e.g., "30s") */
-  startPeriod: z.string().default('30s'),
-});
+  path: z.string().describe('HTTP health check endpoint path'),
+  interval: z.string().default('10s').describe('Interval between health checks (e.g. "10s")'),
+  timeout: z.string().default('5s').describe('Timeout per health check attempt (e.g. "5s")'),
+  retries: z.number().default(10).describe('Number of consecutive failures before marking unhealthy'),
+  startPeriod: z.string().default('30s').describe('Grace period before health checks start (e.g. "30s")'),
+}).describe('Container health check configuration');
 
 /** Service build configuration schema */
 export const ServiceBuildSchema = z.object({
-  /** Path to the Dockerfile */
-  dockerfile: z.string(),
-  /** Build context directory */
-  context: z.string().default('.'),
-  /** Docker image name (supports variables) */
-  image: z.string(),
-  /** Build arguments */
-  args: z.record(z.string()).optional(),
-});
+  dockerfile: z.string().describe('Path to the Dockerfile (relative to context)'),
+  context: z.string().default('.').describe('Docker build context directory'),
+  image: z.string().describe('Docker image name and tag (supports {{variable}} substitution)'),
+  args: z.record(z.string()).optional().describe('Docker build-time arguments (--build-arg)'),
+}).describe('Docker image build configuration');
 
 /** Service container configuration schema */
 export const ServiceContainerSchema = z.object({
-  /** Container name */
-  name: z.string(),
-  /** Port mappings in "host:container" format */
-  ports: z.array(z.string()),
-  /** Environment variables */
-  environment: z.record(z.string()).optional(),
-  /** Volume mounts */
-  volumes: z.array(z.string()).optional(),
-  /** Health check configuration */
-  healthcheck: HealthcheckSchema.optional(),
-});
+  name: z.string().describe('Docker container name'),
+  ports: z.array(z.string()).describe('Port mappings in "hostPort:containerPort" format'),
+  environment: z.record(z.string()).optional().describe('Environment variables passed to the container'),
+  volumes: z.array(z.string()).optional().describe('Volume mounts in "host:container" format'),
+  healthcheck: HealthcheckSchema.optional().describe('Container health check configuration'),
+}).describe('Docker container runtime configuration');
 
 /** Mock route configuration schema */
 export const MockRouteSchema = z.object({
-  /** HTTP method */
-  method: z.string(),
-  /** Route path */
-  path: z.string(),
-  /** Response definition */
+  method: z.string().describe('HTTP method (GET, POST, PUT, DELETE, etc.)'),
+  path: z.string().describe('Route path pattern (supports Express-style params like :id)'),
   response: z.object({
-    /** HTTP status code */
-    status: z.number().default(200),
-    /** Response headers */
-    headers: z.record(z.string()).optional(),
-    /** Response body */
-    body: z.unknown(),
-    /** Simulated response delay (e.g., "100ms", "2s") */
-    delay: z.string().optional(),
-  }),
-  /** Conditional matching rules */
+    status: z.number().default(200).describe('HTTP response status code'),
+    headers: z.record(z.string()).optional().describe('Response headers'),
+    body: z.unknown().describe('Response body (JSON object, string, or template)'),
+    delay: z.string().optional().describe('Simulated response delay (e.g. "100ms", "2s")'),
+  }).describe('Mock response definition'),
   when: z.object({
-    body: z.record(z.unknown()).optional(),
-    headers: z.record(z.string()).optional(),
-    query: z.record(z.string()).optional(),
-  }).optional(),
-});
+    body: z.record(z.unknown()).optional().describe('Match request body fields'),
+    headers: z.record(z.string()).optional().describe('Match request headers'),
+    query: z.record(z.string()).optional().describe('Match query parameters'),
+  }).optional().describe('Conditional matching rules for request routing'),
+}).describe('Mock service route definition');
 
 /** Mock service configuration schema */
 export const MockServiceSchema = z.object({
-  /** Host port */
-  port: z.number(),
-  /** Container-internal port */
-  containerPort: z.number().optional(),
-  /** Mock route definitions */
-  routes: z.array(MockRouteSchema).optional(),
-  /** Pre-built Docker image (alternative to routes) */
-  image: z.string().optional(),
-});
+  port: z.number().describe('Host port the mock server listens on'),
+  containerPort: z.number().optional().describe('Container-internal port (for Docker network access)'),
+  routes: z.array(MockRouteSchema).optional().describe('Mock route definitions'),
+  image: z.string().optional().describe('Pre-built Docker image (alternative to inline routes)'),
+}).describe('Mock service configuration');
+
+/** Retry policy schema */
+export const RetryPolicySchema = z.object({
+  maxAttempts: z.number().min(1).max(10).describe('Maximum retry attempts including first try'),
+  delay: z.string().describe('Delay between retries, e.g. "2s", "500ms"'),
+  backoff: z.enum(['linear', 'exponential']).optional().describe('Backoff strategy'),
+  backoffMultiplier: z.number().optional().default(2).describe('Multiplier for exponential backoff'),
+}).describe('Retry policy for transient test failures');
+
+/** Parallel execution configuration schema */
+export const ParallelConfigSchema = z.object({
+  enabled: z.boolean().describe('Enable parallel suite execution'),
+  concurrency: z.number().optional().describe('Max concurrent suites'),
+}).describe('Parallel test execution configuration');
+
+/** Service definition schema for multi-service orchestration */
+export const ServiceDefinitionSchema = z.object({
+  name: z.string().describe('Unique service identifier'),
+  build: ServiceBuildSchema,
+  container: ServiceContainerSchema,
+  vars: z.record(z.string()).optional(),
+  dependsOn: z.array(z.string()).optional().describe('Services that must be healthy before this one starts'),
+}).describe('Service definition for multi-service orchestration');
 
 /** Test suite configuration schema */
 export const TestSuiteSchema = z.object({
-  /** Human-readable suite name */
-  name: z.string(),
-  /** Unique suite identifier */
-  id: z.string(),
-  /** Test file path */
-  file: z.string().optional(),
-  /** Runner type (yaml, vitest, pytest, shell, exec) */
-  runner: z.string().optional(),
-  /** Custom command (for exec runner) */
-  command: z.string().optional(),
-  /** Runner-specific config file */
-  config: z.string().optional(),
-});
+  name: z.string().describe('Human-readable suite name'),
+  id: z.string().describe('Unique suite identifier (used for filtering and reporting)'),
+  file: z.string().optional().describe('Path to the test file (relative to e2e.yaml directory)'),
+  runner: z.string().optional().describe('Test runner type: yaml, vitest, pytest, shell, exec, or playwright'),
+  command: z.string().optional().describe('Custom command to execute (for exec runner)'),
+  config: z.string().optional().describe('Runner-specific configuration file path'),
+  retry: RetryPolicySchema.optional().describe('Suite-level retry policy (overrides global)'),
+  parallel: z.boolean().optional().describe('Enable parallel execution for this suite'),
+  concurrency: z.number().optional().describe('Maximum concurrency for parallel test cases'),
+}).describe('Test suite configuration');
 
 /** Preset endpoint schema */
 export const PresetEndpointSchema = z.object({
-  method: z.string(),
-  path: z.string(),
-  name: z.string(),
-  body: z.unknown().optional(),
-});
+  method: z.string().describe('HTTP method'),
+  path: z.string().describe('API endpoint path'),
+  name: z.string().describe('Display name for the endpoint'),
+  body: z.unknown().optional().describe('Default request body'),
+}).describe('Predefined API endpoint for the dashboard explorer');
 
 /** Preset group schema */
 export const PresetGroupSchema = z.object({
-  group: z.string(),
-  endpoints: z.array(PresetEndpointSchema),
-});
+  group: z.string().describe('Group name for organizing endpoints'),
+  endpoints: z.array(PresetEndpointSchema).describe('Endpoints in this group'),
+}).describe('Grouped preset API endpoints');
 
 /** Repo configuration schema */
 export const RepoConfigSchema = z.object({
-  name: z.string(),
-  /** Local path (relative to e2e.yaml) */
-  path: z.string().optional(),
-  /** Remote URL (SSH or HTTPS) */
-  url: z.string().optional(),
-  /** Default branch name (for remote repos) */
-  branch: z.string().optional(),
-});
+  name: z.string().describe('Repository name'),
+  path: z.string().optional().describe('Local path (relative to e2e.yaml directory)'),
+  url: z.string().optional().describe('Remote repository URL (SSH or HTTPS)'),
+  branch: z.string().optional().describe('Default branch name for checkout'),
+}).describe('Git repository configuration for branch selection and builds');
 
 /** Dashboard configuration schema */
 export const DashboardSchema = z.object({
-  /** API server port */
-  port: z.number().default(9095),
-  /** UI dev server port */
-  uiPort: z.number().default(9091),
-  /** Predefined API endpoints for the explorer */
-  presets: z.array(PresetGroupSchema).optional(),
-  /** Default environment variables for the env editor */
-  envDefaults: z.record(z.string()).optional(),
-  /** Default directories to browse in container */
-  defaultDirs: z.array(z.string()).optional(),
-});
+  port: z.number().default(9095).describe('Dashboard API server port'),
+  uiPort: z.number().default(9091).describe('Dashboard UI dev server port'),
+  presets: z.array(PresetGroupSchema).optional().describe('Predefined API endpoints for the explorer'),
+  envDefaults: z.record(z.string()).optional().describe('Default environment variable values for the env editor'),
+  defaultDirs: z.array(z.string()).optional().describe('Default directories to browse inside the container'),
+}).describe('Dashboard configuration');
 
 /** Network configuration schema */
 export const NetworkSchema = z.object({
-  /** Docker network name */
-  name: z.string().default('e2e-network'),
-});
+  name: z.string().default('e2e-network').describe('Docker network name for inter-container communication'),
+}).describe('Docker network configuration');
 
 // =====================================================================
 // Complete E2E Configuration Schema
@@ -162,33 +147,28 @@ export const NetworkSchema = z.object({
 
 /** Complete E2E configuration Zod schema */
 export const E2EConfigSchema = z.object({
-  /** Config schema version */
-  version: z.string().default('1'),
-  /** Project metadata */
+  version: z.string().default('1').describe('Configuration schema version'),
   project: z.object({
-    name: z.string(),
-    description: z.string().optional(),
-    version: z.string().optional(),
-  }),
-  /** Service under test */
+    name: z.string().describe('Project name'),
+    description: z.string().optional().describe('Project description'),
+    version: z.string().optional().describe('Project version'),
+  }).describe('Project metadata'),
   service: z.object({
     build: ServiceBuildSchema,
     container: ServiceContainerSchema,
-    vars: z.record(z.string()).optional(),
-  }),
-  /** Mock service definitions */
-  mocks: z.record(MockServiceSchema).optional(),
-  /** Test suite definitions */
+    vars: z.record(z.string()).optional().describe('Custom variables for template substitution'),
+  }).optional().describe('Service under test (single service, backward compatible)'),
+  services: z.array(ServiceDefinitionSchema).optional().describe('Multiple services for multi-service orchestration'),
+  mocks: z.record(MockServiceSchema).optional().describe('Mock service definitions keyed by name'),
   tests: z.object({
-    suites: z.array(TestSuiteSchema),
-  }).optional(),
-  /** Dashboard configuration */
-  dashboard: DashboardSchema.optional(),
-  /** Docker network configuration */
-  network: NetworkSchema.optional(),
-  /** Git repositories for branch selection */
-  repos: z.array(RepoConfigSchema).optional(),
-});
+    suites: z.array(TestSuiteSchema).describe('Test suite definitions'),
+    retry: RetryPolicySchema.optional().describe('Global retry policy for all test cases'),
+    parallel: ParallelConfigSchema.optional().describe('Global parallel execution configuration'),
+  }).optional().describe('Test configuration and suite definitions'),
+  dashboard: DashboardSchema.optional().describe('Dashboard UI configuration'),
+  network: NetworkSchema.optional().describe('Docker network configuration'),
+  repos: z.array(RepoConfigSchema).optional().describe('Git repositories for branch selection and builds'),
+}).describe('Preflight E2E test configuration');
 
 /** Validated configuration type inferred from the Zod schema */
 export type ValidatedE2EConfig = z.infer<typeof E2EConfigSchema>;
@@ -198,7 +178,7 @@ export type ValidatedE2EConfig = z.infer<typeof E2EConfigSchema>;
 // =====================================================================
 
 /**
- * Load and validate an e2e-toolkit configuration file.
+ * Load and validate a preflight configuration file.
  *
  * Steps:
  * 1. Load `.env` from the config file's directory
@@ -306,20 +286,31 @@ async function resolveConfigPath(configPath?: string): Promise<string> {
 }
 
 /**
- * Extract `service.vars` from the raw parsed config object (before Zod validation).
- * This allows variable substitution to use config-defined vars.
+ * Extract vars from the raw parsed config object (before Zod validation).
+ * Checks `service.vars` (single) and first entry of `services[].vars` (multi).
  */
 function extractVars(raw: Record<string, unknown>): Record<string, string> {
-  const service = raw['service'];
-  if (service && typeof service === 'object' && service !== null) {
-    const vars = (service as Record<string, unknown>)['vars'];
-    if (vars && typeof vars === 'object' && vars !== null) {
-      const result: Record<string, string> = {};
-      for (const [key, value] of Object.entries(vars as Record<string, unknown>)) {
-        result[key] = String(value);
+  const result: Record<string, string> = {};
+
+  const extractFromObj = (obj: unknown) => {
+    if (obj && typeof obj === 'object' && obj !== null) {
+      const vars = (obj as Record<string, unknown>)['vars'];
+      if (vars && typeof vars === 'object' && vars !== null) {
+        for (const [key, value] of Object.entries(vars as Record<string, unknown>)) {
+          result[key] = String(value);
+        }
       }
-      return result;
+    }
+  };
+
+  extractFromObj(raw['service']);
+
+  const services = raw['services'];
+  if (Array.isArray(services)) {
+    for (const svc of services) {
+      extractFromObj(svc);
     }
   }
-  return {};
+
+  return result;
 }

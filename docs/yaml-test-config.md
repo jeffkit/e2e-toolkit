@@ -1,8 +1,8 @@
 # YAML 测试用例配置参考
 
-> 最后更新：2026-02-13
+> 最后更新：2026-02-25
 
-本文档详细说明 e2e-toolkit 的 YAML 测试用例配置语法、所有断言工具和使用示例。
+本文档详细说明 preflight 的 YAML 测试用例配置语法、所有断言工具和使用示例。
 
 ---
 
@@ -1139,3 +1139,59 @@ teardown:
 | `delay` | string | 执行前等待时间 |
 | `save` | map | 保存响应变量（仅 request 步骤） |
 | `ignoreError` | boolean | 忽略错误继续执行 |
+| `retry` | object | 步骤级别重试策略（覆盖 suite 和全局策略） |
+
+## 附录 D：重试策略 (retry)
+
+测试步骤、Suite 和全局级别均可配置重试策略，优先级为：步骤 > Suite > 全局。
+
+```yaml
+retry:
+  maxAttempts: 3        # 最大重试次数（含首次，1-10）
+  delay: "2s"           # 重试间隔
+  backoff: exponential  # 退避策略：linear 或 exponential（可选）
+  backoffMultiplier: 2  # 退避乘数（可选，默认 2）
+```
+
+### 全局配置（e2e.yaml）
+
+```yaml
+tests:
+  retry:
+    maxAttempts: 2
+    delay: "1s"
+  suites:
+    - name: 健康检查
+      id: health
+      file: tests/health.yaml
+```
+
+### Suite 级别（e2e.yaml suite 配置）
+
+```yaml
+tests:
+  suites:
+    - name: 不稳定测试
+      id: flaky
+      file: tests/flaky.yaml
+      retry:
+        maxAttempts: 3
+        delay: "2s"
+        backoff: exponential
+```
+
+### 步骤级别（YAML 测试文件）
+
+```yaml
+cases:
+  - name: 重试请求
+    request:
+      method: GET
+      path: /api/health
+    expect:
+      status: 200
+    retry:
+      maxAttempts: 5
+      delay: "500ms"
+      backoff: linear
+```

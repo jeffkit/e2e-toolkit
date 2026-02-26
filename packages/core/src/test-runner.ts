@@ -1,6 +1,6 @@
 /**
  * @module test-runner
- * Unified test runner framework for e2e-toolkit.
+ * Unified test runner framework for preflight.
  *
  * Provides a {@link RunnerRegistry} for managing multiple test runners
  * and a factory function for creating the default registry with all
@@ -92,6 +92,7 @@ export class RunnerRegistry {
  * - `shell` — Shell script test runner
  * - `exec` — Arbitrary command execution runner
  * - `pytest` — Python pytest test runner
+ * - `playwright` — Playwright browser test runner
  *
  * @returns A new RunnerRegistry with built-in runners registered
  */
@@ -104,12 +105,14 @@ export async function createDefaultRegistry(): Promise<RunnerRegistry> {
   const { ShellRunner } = await import('./runners/shell-runner.js');
   const { ExecRunner } = await import('./runners/exec-runner.js');
   const { PytestRunner } = await import('./runners/pytest-runner.js');
+  const { PlaywrightRunner } = await import('./runners/playwright-runner.js');
 
   registry.register(new YAMLRunner());
   registry.register(new VitestRunner());
   registry.register(new ShellRunner());
   registry.register(new ExecRunner());
   registry.register(new PytestRunner());
+  registry.register(new PlaywrightRunner());
 
   return registry;
 }

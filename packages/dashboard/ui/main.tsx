@@ -90,7 +90,7 @@ function App() {
                 ) : (
                   <>
                     <span className="truncate">
-                      {projectName || 'E2E Toolkit'}
+                      {projectName || 'Preflight'}
                     </span>
                     <span className="text-gray-500 text-xs group-hover:text-gray-300 transition-colors">
                       {projectList.length > 1 ? '▼' : ''}
@@ -157,7 +157,7 @@ function App() {
             ))}
           </div>
           <div className="p-4 border-t border-gray-700 text-xs text-gray-500">
-            {projectVersion ? `v${projectVersion}` : 'e2e-toolkit v0.1.0'}
+            {projectVersion ? `v${projectVersion}` : 'preflight v0.1.0'}
           </div>
         </nav>
 

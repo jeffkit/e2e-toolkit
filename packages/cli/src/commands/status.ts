@@ -1,6 +1,6 @@
 /**
  * @module commands/status
- * `e2e-toolkit status` — Display environment status.
+ * `preflight status` — Display environment status.
  *
  * Shows:
  * - Container status
@@ -49,7 +49,7 @@ export function registerStatus(program: Command): void {
         loadConfig,
         getContainerStatus,
         isPortInUse,
-      } = await import('@e2e-toolkit/core');
+      } = await import('@preflight/core');
 
       const configPath = program.opts().config as string | undefined;
 

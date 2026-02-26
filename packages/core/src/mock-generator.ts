@@ -1,6 +1,6 @@
 /**
  * @module mock-generator
- * Declarative Mock service generator for e2e-toolkit.
+ * Declarative Mock service generator for preflight.
  *
  * Reads {@link MockServiceConfig} from e2e.yaml and generates
  * a Fastify HTTP server with the configured mock routes plus
@@ -225,8 +225,6 @@ function registerMockRoutes(
 // Mock Server Factory
 // =====================================================================
 
-const startTime = Date.now();
-
 /**
  * Create a Fastify mock server from a {@link MockServiceConfig}.
  *
@@ -241,6 +239,7 @@ const startTime = Date.now();
  * @returns A configured (but not yet started) Fastify instance
  */
 export function createMockServer(config: MockServiceConfig): FastifyInstance {
+  const startTime = Date.now();
   const app = Fastify({ logger: false });
   const requestLog: MockRequest[] = [];
   const routes = config.routes ?? [];

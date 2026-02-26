@@ -1,8 +1,8 @@
-# E2E Toolkit
+# Preflight
 
 > 配置驱动的 Docker 容器端到端测试平台
 
-E2E Toolkit 是一个声明式的 E2E 测试框架，通过 YAML 配置文件描述测试环境、Mock 服务和测试用例，自动完成 Docker 镜像构建、容器管理、Mock 服务启动和测试执行。
+Preflight 是一个声明式的 E2E 测试框架，通过 YAML 配置文件描述测试环境、Mock 服务和测试用例，自动完成 Docker 镜像构建、容器管理、Mock 服务启动和测试执行。
 
 ## 特性
 
@@ -21,7 +21,7 @@ E2E Toolkit 是一个声明式的 E2E 测试框架，通过 YAML 配置文件描
 ### 1. 初始化项目
 
 ```bash
-npx @e2e-toolkit/cli init
+npx @preflight/cli init
 ```
 
 这会在当前目录生成：
@@ -92,16 +92,16 @@ cases:
 
 ```bash
 # 构建 Docker 镜像
-e2e-toolkit build
+preflight build
 
 # 启动测试环境
-e2e-toolkit setup
+preflight setup
 
 # 运行测试
-e2e-toolkit run
+preflight run
 
 # 清理资源
-e2e-toolkit clean
+preflight clean
 ```
 
 ## 安装
@@ -109,24 +109,24 @@ e2e-toolkit clean
 ### 全局安装
 
 ```bash
-npm install -g @e2e-toolkit/cli
+npm install -g @preflight/cli
 ```
 
 ### 作为开发依赖
 
 ```bash
 # pnpm
-pnpm add -D @e2e-toolkit/cli @e2e-toolkit/core
+pnpm add -D @preflight/cli @preflight/core
 
 # npm
-npm install -D @e2e-toolkit/cli @e2e-toolkit/core
+npm install -D @preflight/cli @preflight/core
 ```
 
 ### Monorepo 开发
 
 ```bash
 git clone <repo-url>
-cd e2e-toolkit
+cd preflight
 pnpm install
 pnpm build
 ```
@@ -237,7 +237,7 @@ network:
 ### 全局选项
 
 ```bash
-e2e-toolkit [command] [options]
+preflight [command] [options]
 
 选项:
   -c, --config <path>    e2e.yaml 配置文件路径
@@ -249,7 +249,7 @@ e2e-toolkit [command] [options]
 ### `init` — 初始化项目
 
 ```bash
-e2e-toolkit init [options]
+preflight init [options]
 
 选项:
   --dir <path>    目标目录（默认当前目录）
@@ -260,7 +260,7 @@ e2e-toolkit init [options]
 ### `build` — 构建 Docker 镜像
 
 ```bash
-e2e-toolkit build [options]
+preflight build [options]
 
 选项:
   --no-cache    不使用 Docker 缓存
@@ -271,7 +271,7 @@ e2e-toolkit build [options]
 ### `setup` — 启动测试环境
 
 ```bash
-e2e-toolkit setup
+preflight setup
 ```
 
 创建 Docker 网络、启动 Mock 服务、启动主容器并等待健康检查通过。
@@ -279,7 +279,7 @@ e2e-toolkit setup
 ### `run` — 运行测试
 
 ```bash
-e2e-toolkit run [options]
+preflight run [options]
 
 选项:
   -s, --suite <id>       指定运行的测试套件 ID
@@ -292,7 +292,7 @@ e2e-toolkit run [options]
 ### `status` — 查看环境状态
 
 ```bash
-e2e-toolkit status
+preflight status
 ```
 
 显示容器状态、端口使用情况、网络信息和镜像详情。
@@ -300,7 +300,7 @@ e2e-toolkit status
 ### `logs` — 查看容器日志
 
 ```bash
-e2e-toolkit logs [options]
+preflight logs [options]
 
 选项:
   -f, --follow            持续跟踪日志输出
@@ -313,18 +313,18 @@ e2e-toolkit logs [options]
 ### `dashboard` — 启动 Dashboard
 
 ```bash
-e2e-toolkit dashboard [options]
+preflight dashboard [options]
 
 选项:
   -p, --port <port>      Dashboard 端口（默认 9091）
 ```
 
-启动可视化 Dashboard 面板。如果 `@e2e-toolkit/dashboard` 包不可用，会打印手动启动指令。
+启动可视化 Dashboard 面板。如果 `@preflight/dashboard` 包不可用，会打印手动启动指令。
 
 ### `clean` — 清理资源
 
 ```bash
-e2e-toolkit clean [options]
+preflight clean [options]
 
 选项:
   --all    同时删除镜像和 volumes
@@ -604,14 +604,14 @@ routes:
 
 ## Dashboard 使用说明
 
-E2E Toolkit 提供一个可视化 Dashboard 用于实时查看测试状态。
+Preflight 提供一个可视化 Dashboard 用于实时查看测试状态。
 
 ### 启动方式
 
 **通过 CLI 启动：**
 
 ```bash
-e2e-toolkit dashboard
+preflight dashboard
 ```
 
 **手动启动：**
@@ -629,7 +629,7 @@ cd packages/dashboard && pnpm dev
 
 ## 从 as-mate 迁移指南
 
-E2E Toolkit 项目的一个核心目标是将基于 Vitest 的 TypeScript E2E 测试迁移为声明式 YAML 测试。以下以 as-mate 项目为例：
+Preflight 项目的一个核心目标是将基于 Vitest 的 TypeScript E2E 测试迁移为声明式 YAML 测试。以下以 as-mate 项目为例：
 
 ### 迁移对照
 
@@ -702,9 +702,9 @@ examples/as-mate/
 ## 架构概览
 
 ```
-e2e-toolkit/
+preflight/
 ├── packages/
-│   ├── core/            # 核心引擎（@e2e-toolkit/core）
+│   ├── core/            # 核心引擎（@preflight/core）
 │   │   ├── src/
 │   │   │   ├── types.ts            # 类型定义
 │   │   │   ├── config-loader.ts    # YAML 配置加载 + Zod 验证
@@ -724,7 +724,7 @@ e2e-toolkit/
 │   │   │       └── exec-runner.ts    # 通用命令运行器
 │   │   └── tests/
 │   │
-│   ├── cli/             # CLI 工具（@e2e-toolkit/cli）
+│   ├── cli/             # CLI 工具（@preflight/cli）
 │   │   └── src/
 │   │       ├── index.ts            # 入口
 │   │       └── commands/
@@ -737,7 +737,7 @@ e2e-toolkit/
 │   │           ├── dashboard.ts      # Dashboard 启动
 │   │           └── clean.ts          # 资源清理
 │   │
-│   └── dashboard/       # 可视化 Dashboard（@e2e-toolkit/dashboard）
+│   └── dashboard/       # 可视化 Dashboard（@preflight/dashboard）
 │
 └── examples/
     └── as-mate/         # as-mate 迁移示例
@@ -803,7 +803,7 @@ Config Loader ──► Zod 验证 + 变量解析
 HTML 报告使用示例：
 
 ```typescript
-import { HTMLReporter } from '@e2e-toolkit/core';
+import { HTMLReporter } from '@preflight/core';
 
 const reporter = new HTMLReporter();
 // ... feed events via reporter.onEvent(event) ...

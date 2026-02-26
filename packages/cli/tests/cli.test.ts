@@ -1,5 +1,5 @@
 /**
- * CLI smoke tests for e2e-toolkit.
+ * CLI smoke tests for preflight.
  *
  * Tests cover:
  * - --help output
@@ -28,7 +28,7 @@ describe('CLI', () => {
   describe('--help', () => {
     it('should show help text with all commands', () => {
       const output = runCLI(['--help']);
-      expect(output).toContain('e2e-toolkit');
+      expect(output).toContain('preflight');
       expect(output).toContain('init');
       expect(output).toContain('setup');
       expect(output).toContain('run');

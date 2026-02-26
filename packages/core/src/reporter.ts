@@ -1,6 +1,6 @@
 /**
  * @module reporter
- * Test result reporters for e2e-toolkit.
+ * Test result reporters for preflight.
  *
  * Provides three built-in {@link Reporter} implementations:
  * - {@link ConsoleReporter} — streams coloured output to stdout
@@ -187,7 +187,7 @@ function renderHTML(report: TestReport): string {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>E2E Toolkit Test Report — ${escapeHTML(report.project || 'unnamed')}</title>
+<title>Preflight Test Report — ${escapeHTML(report.project || 'unnamed')}</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8f9fa; color: #212529; padding: 2rem; max-width: 960px; margin: 0 auto; }
@@ -218,7 +218,7 @@ function renderHTML(report: TestReport): string {
 </style>
 </head>
 <body>
-  <h1>E2E Toolkit — Test Report</h1>
+  <h1>Preflight — Test Report</h1>
   <div class="meta">Project: ${escapeHTML(report.project || 'unnamed')} · ${ts} · Duration: ${report.duration}ms</div>
   <div class="totals">
     <div class="stat passed"><div class="num">${report.totals.passed}</div><div class="label">Passed</div></div>
@@ -246,14 +246,32 @@ function escapeHTML(str: string): string {
 
 /**
  * Build a {@link TestReport} from a flat list of {@link TestEvent}s.
+ *
+ * Supports interleaved events from parallel suites by tracking multiple
+ * active suites simultaneously via a name-keyed map.
  */
 function buildReport(events: TestEvent[]): TestReport {
-  const suites: SuiteReport[] = [];
-  let currentSuite: SuiteReport | null = null;
-  let caseStart: number | null = null;
+  const completedSuites: SuiteReport[] = [];
+  const activeSuites = new Map<string, SuiteReport>();
 
   let firstTs = Infinity;
   let lastTs = 0;
+
+  const getOrCreateSuite = (suiteName: string): SuiteReport => {
+    let suite = activeSuites.get(suiteName);
+    if (!suite) {
+      suite = {
+        suite: suiteName,
+        passed: 0,
+        failed: 0,
+        skipped: 0,
+        duration: 0,
+        cases: [],
+      };
+      activeSuites.set(suiteName, suite);
+    }
+    return suite;
+  };
 
   for (const event of events) {
     if (event.timestamp < firstTs) firstTs = event.timestamp;
@@ -261,86 +279,82 @@ function buildReport(events: TestEvent[]): TestReport {
 
     switch (event.type) {
       case 'suite_start':
-        currentSuite = {
-          suite: event.suite,
-          passed: 0,
-          failed: 0,
-          skipped: 0,
-          duration: 0,
-          cases: [],
-        };
+        getOrCreateSuite(event.suite);
         break;
 
       case 'case_start':
-        caseStart = event.timestamp;
+        // Ensure suite exists for attribution
+        getOrCreateSuite(event.suite);
         break;
 
-      case 'case_pass':
-        if (currentSuite) {
-          currentSuite.passed++;
-          currentSuite.cases.push({
-            name: event.name,
-            status: 'passed',
-            duration: event.duration,
-          });
-        }
-        caseStart = null;
+      case 'case_pass': {
+        const suite = getOrCreateSuite(event.suite);
+        suite.passed++;
+        suite.cases.push({
+          name: event.name,
+          status: 'passed',
+          duration: event.duration,
+          attempts: event.attempts,
+        });
         break;
+      }
 
-      case 'case_fail':
-        if (currentSuite) {
-          currentSuite.failed++;
-          currentSuite.cases.push({
-            name: event.name,
-            status: 'failed',
-            duration: event.duration,
-            error: event.error,
-          });
-        }
-        caseStart = null;
+      case 'case_fail': {
+        const suite = getOrCreateSuite(event.suite);
+        suite.failed++;
+        suite.cases.push({
+          name: event.name,
+          status: 'failed',
+          duration: event.duration,
+          error: event.error,
+          attempts: event.attempts,
+          diagnostics: event.diagnostics,
+        });
         break;
+      }
 
-      case 'case_skip':
-        if (currentSuite) {
-          currentSuite.skipped++;
-          currentSuite.cases.push({
-            name: event.name,
-            status: 'skipped',
-            duration: 0,
-          });
-        }
+      case 'case_skip': {
+        const suite = getOrCreateSuite(event.suite);
+        suite.skipped++;
+        suite.cases.push({
+          name: event.name,
+          status: 'skipped',
+          duration: 0,
+        });
         break;
+      }
 
-      case 'suite_end':
-        if (currentSuite) {
-          currentSuite.duration = event.duration;
-          suites.push(currentSuite);
-          currentSuite = null;
+      case 'suite_end': {
+        const suite = activeSuites.get(event.suite);
+        if (suite) {
+          suite.duration = event.duration;
+          completedSuites.push(suite);
+          activeSuites.delete(event.suite);
         }
         break;
+      }
 
       case 'log':
-        // Logs are not included in the report structure
         break;
     }
   }
 
-  // Handle case where suite_end was never emitted
-  if (currentSuite) {
-    suites.push(currentSuite);
+  // Flush any suites that never received suite_end
+  for (const suite of activeSuites.values()) {
+    completedSuites.push(suite);
   }
 
   const totals = {
-    passed: suites.reduce((sum, s) => sum + s.passed, 0),
-    failed: suites.reduce((sum, s) => sum + s.failed, 0),
-    skipped: suites.reduce((sum, s) => sum + s.skipped, 0),
+    passed: completedSuites.reduce((sum, s) => sum + s.passed, 0),
+    failed: completedSuites.reduce((sum, s) => sum + s.failed, 0),
+    skipped: completedSuites.reduce((sum, s) => sum + s.skipped, 0),
   };
 
   return {
     project: '',
     timestamp: firstTs === Infinity ? Date.now() : firstTs,
     duration: lastTs > firstTs ? lastTs - firstTs : 0,
-    suites,
+    suites: completedSuites,
     totals,
   };
 }

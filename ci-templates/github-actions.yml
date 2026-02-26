@@ -1,0 +1,108 @@
+# Preflight E2E Testing — GitHub Actions Reusable Workflow Template
+#
+# Usage: Copy this file or reference it as a reusable workflow.
+# Runs the full Preflight lifecycle: build → setup → run → clean.
+#
+# Example:
+#   jobs:
+#     e2e:
+#       uses: ./.github/workflows/preflight-e2e.yml
+#       with:
+#         project_path: examples/as-mate
+#         test_filter: health,api
+
+name: Preflight E2E Tests
+
+on:
+  workflow_call:
+    inputs:
+      project_path:
+        description: 'Path to the project directory containing e2e.yaml (relative to repo root)'
+        required: true
+        type: string
+      test_filter:
+        description: 'Comma-separated suite IDs to run (empty = all suites)'
+        required: false
+        type: string
+        default: ''
+      artifact_path:
+        description: 'Path for uploading test result artifacts'
+        required: false
+        type: string
+        default: 'test-results'
+      node_version:
+        description: 'Node.js version to use'
+        required: false
+        type: string
+        default: '20'
+      pnpm_version:
+        description: 'pnpm version to use'
+        required: false
+        type: string
+        default: '10'
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ inputs.pnpm_version }}
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Cache pnpm dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build project
+        run: pnpm build
+
+      - name: Preflight — Build Docker images
+        run: npx preflight build -c ${{ inputs.project_path }}/e2e.yaml
+
+      - name: Preflight — Setup environment
+        run: npx preflight setup -c ${{ inputs.project_path }}/e2e.yaml
+
+      - name: Preflight — Run tests
+        run: |
+          FILTER_ARG=""
+          if [ -n "${{ inputs.test_filter }}" ]; then
+            FILTER_ARG="--suite ${{ inputs.test_filter }}"
+          fi
+          npx preflight run -c ${{ inputs.project_path }}/e2e.yaml \
+            --reporter json \
+            $FILTER_ARG \
+            > ${{ inputs.artifact_path }}/test-results.json
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preflight-test-results
+          path: ${{ inputs.artifact_path }}/test-results.json
+          retention-days: 30
+
+      - name: Preflight — Clean environment
+        if: always()
+        run: npx preflight clean -c ${{ inputs.project_path }}/e2e.yaml --force

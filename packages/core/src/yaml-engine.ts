@@ -1,6 +1,6 @@
 /**
  * @module yaml-engine
- * YAML test engine for e2e-toolkit.
+ * YAML test engine for preflight.
  *
  * Parses YAML-based declarative test files, executes HTTP requests,
  * and validates responses using the assertion engine.
@@ -8,11 +8,16 @@
 
 import yaml from 'js-yaml';
 import fs from 'node:fs/promises';
-import { execSync } from 'node:child_process';
+import { execFile as execFileCb } from 'node:child_process';
+import { promisify } from 'node:util';
 import net from 'node:net';
-import type { YAMLTestSuite, TestStep, TestEvent, VariableContext } from './types.js';
+import type { YAMLTestSuite, TestStep, TestEvent, VariableContext, DiagnosticReport, RetryPolicy, AttemptResult } from './types.js';
 import { resolveVariables, resolveObjectVariables } from './variable-resolver.js';
 import { assertStatus, assertHeaders, assertBody } from './assertion-engine.js';
+import { DiagnosticCollector } from './diagnostics.js';
+import { RetryExecutor, resolveRetryPolicy } from './retry-engine.js';
+
+const execFileAsync = promisify(execFileCb);
 
 // =====================================================================
 // Public Interfaces
@@ -28,6 +33,16 @@ export interface YAMLEngineOptions {
   defaultTimeout?: number;
   /** Container name for exec steps (docker exec) */
   containerName?: string;
+  /** Mock service endpoints for diagnostics collection on failure */
+  mockEndpoints?: Array<{ name: string; port: number }>;
+  /** Docker network name for diagnostics collection on failure */
+  networkName?: string;
+  /** Whether to collect diagnostics on test case failure (default: false) */
+  collectDiagnostics?: boolean;
+  /** Global retry policy (from e2e.yaml tests.retry) */
+  globalRetryPolicy?: RetryPolicy;
+  /** Suite-level retry policy (from suite config) */
+  suiteRetryPolicy?: RetryPolicy;
 }
 
 // =====================================================================
@@ -222,6 +237,10 @@ export async function* executeYAMLSuite(
     }
   }
 
+  // ---- Diagnostics collector (used on failure) ----
+  const diagnosticCollector = options.collectDiagnostics ? new DiagnosticCollector() : null;
+  const retryExecutor = new RetryExecutor();
+
   // ---- Test Cases ----
   for (const testCase of suite.cases) {
     const caseStart = Date.now();
@@ -229,27 +248,69 @@ export async function* executeYAMLSuite(
 
     yield { type: 'case_start', suite: suiteName, name: caseName, timestamp: Date.now() };
 
-    try {
-      // Handle delay
+    // Resolve effective retry policy: case > suite > global
+    const effectiveRetry = resolveRetryPolicy(
+      testCase.retry,
+      options.suiteRetryPolicy,
+      options.globalRetryPolicy,
+    );
+
+    const collectDiagnostics = async (): Promise<DiagnosticReport | undefined> => {
+      if (!diagnosticCollector) return undefined;
+      try {
+        return await diagnosticCollector.collect({
+          containerNames: options.containerName ? [options.containerName] : [],
+          mockEndpoints: options.mockEndpoints,
+          networkName: options.networkName,
+        });
+      } catch {
+        return undefined;
+      }
+    };
+
+    const executeSingleAttempt = async (): Promise<void> => {
       if (testCase.delay) {
         const delayMs = parseTime(testCase.delay);
         await sleep(delayMs);
       }
 
-      // Execute the step and get assertion results
       const errors = await executeStep(testCase, options.baseUrl, ctx, defaultTimeout, options.containerName);
-
       if (errors.length > 0) {
+        throw new Error(errors.join('\n'));
+      }
+    };
+
+    if (effectiveRetry && effectiveRetry.maxAttempts > 1) {
+      const result = await retryExecutor.execute(executeSingleAttempt, effectiveRetry);
+
+      if (result.passed) {
+        passed++;
+        yield {
+          type: 'case_pass',
+          suite: suiteName,
+          name: caseName,
+          duration: Date.now() - caseStart,
+          timestamp: Date.now(),
+          attempts: result.attempts,
+        };
+      } else {
         failed++;
+        const diagnostics = await collectDiagnostics();
         yield {
           type: 'case_fail',
           suite: suiteName,
           name: caseName,
-          error: errors.join('\n'),
+          error: result.finalError ?? 'All retry attempts exhausted',
           duration: Date.now() - caseStart,
           timestamp: Date.now(),
+          diagnostics,
+          attempts: result.attempts,
         };
-      } else {
+      }
+    } else {
+      try {
+        await executeSingleAttempt();
+
         passed++;
         yield {
           type: 'case_pass',
@@ -258,17 +319,19 @@ export async function* executeYAMLSuite(
           duration: Date.now() - caseStart,
           timestamp: Date.now(),
         };
+      } catch (err) {
+        failed++;
+        const diagnostics = await collectDiagnostics();
+        yield {
+          type: 'case_fail',
+          suite: suiteName,
+          name: caseName,
+          error: (err as Error).message,
+          duration: Date.now() - caseStart,
+          timestamp: Date.now(),
+          diagnostics,
+        };
       }
-    } catch (err) {
-      failed++;
-      yield {
-        type: 'case_fail',
-        suite: suiteName,
-        name: caseName,
-        error: (err as Error).message,
-        duration: Date.now() - caseStart,
-        timestamp: Date.now(),
-      };
     }
   }
 
@@ -476,7 +539,7 @@ async function executeStep(
  *
  * @returns Array of error messages (empty if all assertions pass)
  */
-function executeExecStep(step: TestStep, containerName?: string): string[] {
+async function executeExecStep(step: TestStep, containerName?: string): Promise<string[]> {
   const execConfig = step.exec!;
   const container = execConfig.container || containerName;
 
@@ -489,16 +552,16 @@ function executeExecStep(step: TestStep, containerName?: string): string[] {
   let exitCode = 0;
 
   try {
-    output = execSync(
-      `docker exec ${container} sh -c ${JSON.stringify(execConfig.command)}`,
+    const result = await execFileAsync(
+      'docker', ['exec', container, 'sh', '-c', execConfig.command],
       { encoding: 'utf-8', timeout: 15_000 },
-    ).trim();
+    );
+    output = (result.stdout ?? '').trim();
   } catch (err: unknown) {
-    const execErr = err as { stdout?: string; stderr?: string; status?: number; message?: string };
+    const execErr = err as { stdout?: string; stderr?: string; code?: number; message?: string };
     output = (execErr.stdout || execErr.stderr || '').trim();
-    exitCode = execErr.status ?? 1;
+    exitCode = execErr.code ?? 1;
 
-    // If no expect is defined and command failed, that's an error
     if (!step.expect) {
       return [`Exec command failed with exit code ${exitCode}: ${execErr.message || ''}`];
     }
@@ -607,7 +670,7 @@ function executeExecStep(step: TestStep, containerName?: string): string[] {
  *       port: { gt: 0 }
  * ```
  */
-function executeFileStep(step: TestStep, containerName?: string): string[] {
+async function executeFileStep(step: TestStep, containerName?: string): Promise<string[]> {
   const fileConfig = step.file!;
   const container = fileConfig.container || containerName;
 
@@ -618,30 +681,28 @@ function executeFileStep(step: TestStep, containerName?: string): string[] {
   const errors: string[] = [];
   const filePath = fileConfig.path;
 
-  // Check file existence
   if (fileConfig.exists !== undefined) {
     try {
-      execSync(`docker exec ${container} test -e ${JSON.stringify(filePath)}`, { timeout: 5000 });
+      await execFileAsync('docker', ['exec', container, 'test', '-e', filePath], { timeout: 5000 });
       if (!fileConfig.exists) {
         errors.push(`File ${filePath} exists but was expected not to`);
       }
     } catch {
       if (fileConfig.exists) {
         errors.push(`File ${filePath} does not exist`);
-        return errors; // No point continuing if file doesn't exist
+        return errors;
       }
     }
-    // If only checking existence, return early
     if (fileConfig.exists === false) return errors;
   }
 
-  // Check permissions
   if (fileConfig.permissions) {
     try {
-      const perms = execSync(
-        `docker exec ${container} stat -c '%A' ${JSON.stringify(filePath)}`,
+      const { stdout } = await execFileAsync(
+        'docker', ['exec', container, 'stat', '-c', '%A', filePath],
         { encoding: 'utf-8', timeout: 5000 },
-      ).trim();
+      );
+      const perms = stdout.trim();
       if (perms !== fileConfig.permissions) {
         errors.push(`File ${filePath} permissions: expected "${fileConfig.permissions}", got "${perms}"`);
       }
@@ -650,13 +711,13 @@ function executeFileStep(step: TestStep, containerName?: string): string[] {
     }
   }
 
-  // Check owner
   if (fileConfig.owner) {
     try {
-      const owner = execSync(
-        `docker exec ${container} stat -c '%U' ${JSON.stringify(filePath)}`,
+      const { stdout } = await execFileAsync(
+        'docker', ['exec', container, 'stat', '-c', '%U', filePath],
         { encoding: 'utf-8', timeout: 5000 },
-      ).trim();
+      );
+      const owner = stdout.trim();
       if (owner !== fileConfig.owner) {
         errors.push(`File ${filePath} owner: expected "${fileConfig.owner}", got "${owner}"`);
       }
@@ -665,18 +726,17 @@ function executeFileStep(step: TestStep, containerName?: string): string[] {
     }
   }
 
-  // Check file size
   if (fileConfig.size) {
     try {
-      const sizeStr = execSync(
-        `docker exec ${container} stat -c '%s' ${JSON.stringify(filePath)}`,
+      const { stdout } = await execFileAsync(
+        'docker', ['exec', container, 'stat', '-c', '%s', filePath],
         { encoding: 'utf-8', timeout: 5000 },
-      ).trim();
-      const size = parseInt(sizeStr, 10);
+      );
+      const size = parseInt(stdout.trim(), 10);
       const match = fileConfig.size.match(/^([><=!]+)(\d+)$/);
       if (match) {
         const op = match[1];
-        const expected = parseInt(match[2], 10);
+        const expected = parseInt(match[2]!, 10);
         let pass = false;
         switch (op) {
           case '>': pass = size > expected; break;
@@ -695,23 +755,22 @@ function executeFileStep(step: TestStep, containerName?: string): string[] {
     }
   }
 
-  // Read file content for content assertions
   const needsContent = fileConfig.contains || fileConfig.notContains ||
     fileConfig.matches || fileConfig.json;
 
   if (needsContent) {
     let content: string;
     try {
-      content = execSync(
-        `docker exec ${container} cat ${JSON.stringify(filePath)}`,
+      const { stdout } = await execFileAsync(
+        'docker', ['exec', container, 'cat', filePath],
         { encoding: 'utf-8', timeout: 10000 },
       );
+      content = stdout;
     } catch (err) {
       errors.push(`Failed to read ${filePath}: ${(err as Error).message}`);
       return errors;
     }
 
-    // contains
     if (fileConfig.contains) {
       const patterns = Array.isArray(fileConfig.contains)
         ? fileConfig.contains : [fileConfig.contains];
@@ -722,7 +781,6 @@ function executeFileStep(step: TestStep, containerName?: string): string[] {
       }
     }
 
-    // notContains
     if (fileConfig.notContains) {
       const patterns = Array.isArray(fileConfig.notContains)
         ? fileConfig.notContains : [fileConfig.notContains];
@@ -733,7 +791,6 @@ function executeFileStep(step: TestStep, containerName?: string): string[] {
       }
     }
 
-    // matches (regex)
     if (fileConfig.matches) {
       const regex = new RegExp(fileConfig.matches);
       if (!regex.test(content)) {
@@ -741,7 +798,6 @@ function executeFileStep(step: TestStep, containerName?: string): string[] {
       }
     }
 
-    // json - parse and assert
     if (fileConfig.json) {
       try {
         const parsed = JSON.parse(content);
@@ -777,7 +833,7 @@ function executeFileStep(step: TestStep, containerName?: string): string[] {
  *     user: root
  * ```
  */
-function executeProcessStep(step: TestStep, containerName?: string): string[] {
+async function executeProcessStep(step: TestStep, containerName?: string): Promise<string[]> {
   const procConfig = step.process!;
   const container = procConfig.container || containerName;
 
@@ -788,18 +844,25 @@ function executeProcessStep(step: TestStep, containerName?: string): string[] {
   const errors: string[] = [];
 
   try {
-    // Get process list
-    const output = execSync(
-      `docker exec ${container} ps aux 2>/dev/null || docker exec ${container} ps -ef 2>/dev/null`,
-      { encoding: 'utf-8', timeout: 10000 },
-    );
+    let output: string;
+    try {
+      const result = await execFileAsync(
+        'docker', ['exec', container, 'ps', 'aux'],
+        { encoding: 'utf-8', timeout: 10000 },
+      );
+      output = result.stdout;
+    } catch {
+      const result = await execFileAsync(
+        'docker', ['exec', container, 'ps', '-ef'],
+        { encoding: 'utf-8', timeout: 10000 },
+      );
+      output = result.stdout;
+    }
 
-    // Filter matching processes (exclude the grep itself)
     const lines = output.split('\n')
       .filter(l => l.includes(procConfig.name) && !l.includes('grep'));
     const matchCount = lines.length;
 
-    // Assert running
     if (procConfig.running !== undefined) {
       const isRunning = matchCount > 0;
       if (isRunning !== procConfig.running) {
@@ -811,12 +874,11 @@ function executeProcessStep(step: TestStep, containerName?: string): string[] {
       }
     }
 
-    // Assert count
     if (procConfig.count) {
       const match = procConfig.count.match(/^([><=!]+)(\d+)$/);
       if (match) {
         const op = match[1];
-        const expected = parseInt(match[2], 10);
+        const expected = parseInt(match[2]!, 10);
         let pass = false;
         switch (op) {
           case '>': pass = matchCount > expected; break;
@@ -832,7 +894,6 @@ function executeProcessStep(step: TestStep, containerName?: string): string[] {
       }
     }
 
-    // Assert user
     if (procConfig.user && lines.length > 0) {
       const hasCorrectUser = lines.some(l => {
         const parts = l.trim().split(/\s+/);
@@ -864,16 +925,15 @@ function executeProcessStep(step: TestStep, containerName?: string): string[] {
  *     listening: true
  * ```
  */
-function executePortStep(step: TestStep, containerName?: string): string[] {
+async function executePortStep(step: TestStep, containerName?: string): Promise<string[]> {
   const portConfig = step.port!;
   const container = portConfig.container || containerName;
   const errors: string[] = [];
 
   if (container) {
-    // Check port inside container
     try {
-      const output = execSync(
-        `docker exec ${container} sh -c "ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null || cat /proc/net/tcp 2>/dev/null"`,
+      const { stdout: output } = await execFileAsync(
+        'docker', ['exec', container, 'sh', '-c', 'ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null || cat /proc/net/tcp 2>/dev/null'],
         { encoding: 'utf-8', timeout: 10000 },
       );
       const isListening = output.includes(`:${portConfig.port} `) ||
@@ -888,14 +948,12 @@ function executePortStep(step: TestStep, containerName?: string): string[] {
             : `Port ${portConfig.port} is listening but expected not to be`,
         );
       }
-    } catch (err) {
-      // Fallback: try TCP connect test
+    } catch {
       try {
-        execSync(
-          `docker exec ${container} sh -c "echo '' > /dev/tcp/localhost/${portConfig.port}" 2>/dev/null`,
+        await execFileAsync(
+          'docker', ['exec', container, 'sh', '-c', `echo '' > /dev/tcp/localhost/${portConfig.port}`],
           { encoding: 'utf-8', timeout: 5000 },
         );
-        // If we get here, port is open
         if (portConfig.listening === false) {
           errors.push(`Port ${portConfig.port} is listening but expected not to be`);
         }
@@ -906,30 +964,25 @@ function executePortStep(step: TestStep, containerName?: string): string[] {
       }
     }
   } else {
-    // Check port on host
     const host = portConfig.host || 'localhost';
     const timeoutMs = portConfig.timeout ? parseTime(portConfig.timeout) : 5000;
 
-    try {
-      // Use node's net module for a quick check
-      const result = execSync(
-        `node -e "const n=require('net');const s=n.createConnection({port:${portConfig.port},host:'${host}',timeout:${timeoutMs}});s.on('connect',()=>{console.log('open');s.destroy()});s.on('error',()=>{console.log('closed');s.destroy()})"`,
-        { encoding: 'utf-8', timeout: timeoutMs + 2000 },
-      ).trim();
+    const isOpen = await new Promise<boolean>((resolve) => {
+      const socket = new net.Socket();
+      socket.setTimeout(timeoutMs);
+      socket.once('connect', () => { socket.destroy(); resolve(true); });
+      socket.once('error', () => { socket.destroy(); resolve(false); });
+      socket.once('timeout', () => { socket.destroy(); resolve(false); });
+      socket.connect(portConfig.port, host);
+    });
 
-      const isOpen = result === 'open';
-      const expectListening = portConfig.listening !== false;
-      if (isOpen !== expectListening) {
-        errors.push(
-          expectListening
-            ? `Port ${host}:${portConfig.port} is not accessible`
-            : `Port ${host}:${portConfig.port} is accessible but expected not to be`,
-        );
-      }
-    } catch {
-      if (portConfig.listening !== false) {
-        errors.push(`Port ${portConfig.host || 'localhost'}:${portConfig.port} check failed`);
-      }
+    const expectListening = portConfig.listening !== false;
+    if (isOpen !== expectListening) {
+      errors.push(
+        expectListening
+          ? `Port ${host}:${portConfig.port} is not accessible`
+          : `Port ${host}:${portConfig.port} is accessible but expected not to be`,
+      );
     }
   }
 
@@ -1111,6 +1164,61 @@ async function waitForUrl(url: string, timeoutMs: number): Promise<boolean> {
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+// =====================================================================
+// Parallel Suite Coordination
+// =====================================================================
+
+export interface SuiteExecutionConfig {
+  suite: YAMLTestSuite;
+  options: YAMLEngineOptions;
+  parallel?: boolean;
+}
+
+/**
+ * Execute a list of test suites, running suites marked `parallel: true`
+ * concurrently and others sequentially.
+ *
+ * Parallel suites get isolated VariableContext copies (structuredClone)
+ * so that save operations in one suite cannot affect another.
+ *
+ * @param configs - Array of suite configs with parallel flag
+ * @param concurrency - Max concurrency for parallel suites (default: all)
+ * @yields {TestEvent} Events from all suites
+ */
+export async function* executeSuitesWithParallel(
+  configs: SuiteExecutionConfig[],
+  concurrency?: number,
+): AsyncGenerator<TestEvent> {
+  const sequential = configs.filter(c => !c.parallel);
+  const parallel = configs.filter(c => c.parallel);
+
+  // Run sequential suites first
+  for (const config of sequential) {
+    for await (const event of executeYAMLSuite(config.suite, config.options)) {
+      yield event;
+    }
+  }
+
+  // Run parallel suites concurrently
+  if (parallel.length > 0) {
+    const { ParallelSuiteExecutor } = await import('./parallel-engine.js');
+    const executor = new ParallelSuiteExecutor();
+
+    const parallelConfigs = parallel.map(c => ({
+      suite: c.suite,
+      options: c.options,
+    }));
+
+    for await (const event of executor.stream(parallelConfigs, { concurrency })) {
+      yield event;
+    }
+  }
+}
+
+// =====================================================================
+// Internal Helpers (continued)
+// =====================================================================
 
 /**
  * Wait for a TCP port to become available.

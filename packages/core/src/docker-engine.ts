@@ -2,13 +2,16 @@
  * @module docker-engine
  * Docker Engine - Image building and container management.
  *
- * Uses Docker CLI (`child_process` spawn/execSync) instead of dockerode
+ * Uses Docker CLI (`child_process` spawn/execFile) instead of dockerode
  * for zero native-dependency operation.
  */
 
-import { spawn, execSync } from 'node:child_process';
+import { spawn, execFileSync, execFile as execFileCb } from 'node:child_process';
+import { promisify } from 'node:util';
 import { createServer } from 'node:net';
 import type { BuildEvent, ContainerStatus, ContainerEvent } from './types.js';
+
+const execFileAsync = promisify(execFileCb);
 
 // =====================================================================
 // Public Interfaces
@@ -114,8 +117,7 @@ export function buildRunArgs(options: DockerRunOptions): string[] {
 
   if (options.healthcheck) {
     const hc = options.healthcheck;
-    // Wrap health-cmd in quotes because args are joined into a shell string
-    args.push('--health-cmd', `"${hc.cmd}"`);
+    args.push('--health-cmd', hc.cmd);
     args.push('--health-interval', hc.interval);
     args.push('--health-timeout', hc.timeout);
     args.push('--health-retries', String(hc.retries));
@@ -134,65 +136,13 @@ export function buildRunArgs(options: DockerRunOptions): string[] {
 /**
  * Build a Docker image, yielding {@link BuildEvent} entries as progress updates.
  *
- * Uses `docker build` via `child_process.spawn` and streams stdout/stderr
- * line by line.
- *
- * @param options - Build options
- * @yields {BuildEvent} Progress events
- */
-export async function* buildImage(options: DockerBuildOptions): AsyncGenerator<BuildEvent> {
-  const args = buildBuildArgs(options);
-  const startTime = Date.now();
-
-  yield { type: 'build_start', image: options.imageName, timestamp: Date.now() };
-
-  const exitCode = await new Promise<number | null>((resolve, reject) => {
-    const proc = spawn('docker', args, { stdio: ['ignore', 'pipe', 'pipe'] });
-
-    const lineBuffer = { stdout: '', stderr: '' };
-
-    const processLines = (stream: 'stdout' | 'stderr', chunk: Buffer) => {
-      lineBuffer[stream] += chunk.toString();
-      const lines = lineBuffer[stream].split('\n');
-      // Keep the last (possibly incomplete) line in the buffer
-      lineBuffer[stream] = lines.pop() ?? '';
-      for (const line of lines) {
-        if (line.trim()) {
-          // We can't yield from inside a callback, so we collect events
-          // Instead, we use a different pattern below
-        }
-      }
-    };
-
-    proc.stdout.on('data', (data: Buffer) => processLines('stdout', data));
-    proc.stderr.on('data', (data: Buffer) => processLines('stderr', data));
-
-    proc.on('error', reject);
-    proc.on('close', (code) => resolve(code));
-  });
-
-  // Note: The async generator pattern with spawn requires a different approach.
-  // We re-implement using a queue-based pattern for proper yielding.
-
-  yield {
-    type: 'build_end',
-    success: exitCode === 0,
-    duration: Date.now() - startTime,
-    error: exitCode !== 0 ? `Build exited with code ${exitCode}` : undefined,
-    timestamp: Date.now(),
-  };
-}
-
-/**
- * Build a Docker image with full streaming of build logs.
- *
- * Uses an internal event queue to properly yield {@link BuildEvent} entries
- * from the spawned process.
+ * Uses an internal event queue to properly yield events from the spawned
+ * `docker build` process, including individual `build_log` lines.
  *
  * @param options - Build options
  * @yields {BuildEvent} Progress events including individual log lines
  */
-export async function* buildImageStreaming(options: DockerBuildOptions): AsyncGenerator<BuildEvent> {
+export async function* buildImage(options: DockerBuildOptions): AsyncGenerator<BuildEvent> {
   const args = buildBuildArgs(options);
   const startTime = Date.now();
 
@@ -252,12 +202,14 @@ export async function* buildImageStreaming(options: DockerBuildOptions): AsyncGe
     } else {
       await new Promise<void>((resolve) => {
         resolveWait = resolve;
-        // Safety timeout to avoid hanging
         setTimeout(resolve, 1000);
       });
     }
   }
 }
+
+/** @deprecated Use {@link buildImage} instead. Kept for backward compatibility. */
+export const buildImageStreaming = buildImage;
 
 // =====================================================================
 // Container Management
@@ -274,11 +226,11 @@ export async function startContainer(options: DockerRunOptions): Promise<string>
   const args = buildRunArgs(options);
 
   try {
-    const output = execSync(`docker ${args.join(' ')}`, {
+    const { stdout } = await execFileAsync('docker', args, {
       encoding: 'utf-8',
       timeout: 30_000,
-    }).trim();
-    return output.slice(0, 12);
+    });
+    return stdout.trim().slice(0, 12);
   } catch (err) {
     throw new Error(
       `Failed to start container "${options.name}": ${err instanceof Error ? err.message : String(err)}`,
@@ -294,7 +246,7 @@ export async function startContainer(options: DockerRunOptions): Promise<string>
  * @param name - Container name
  */
 export async function stopContainer(name: string): Promise<void> {
-  safeExec(`docker rm -f ${name}`);
+  await safeExecFileAsync('docker', ['rm', '-f', name]);
 }
 
 /**
@@ -304,9 +256,7 @@ export async function stopContainer(name: string): Promise<void> {
  * @returns Container status string
  */
 export async function getContainerStatus(name: string): Promise<ContainerStatus> {
-  const result = safeExec(
-    `docker inspect --format "{{.State.Status}}" ${name}`,
-  );
+  const result = await safeExecFileAsync('docker', ['inspect', '--format', '{{.State.Status}}', name]);
   if (!result) return 'unknown';
 
   const statusMap: Record<string, ContainerStatus> = {
@@ -329,9 +279,9 @@ export async function getContainerStatus(name: string): Promise<ContainerStatus>
  * @returns `true` if the container is running
  */
 export async function isContainerRunning(name: string): Promise<boolean> {
-  const result = safeExec(
-    `docker ps --filter "name=^${name}$" --filter "status=running" --format "{{.Names}}"`,
-  );
+  const result = await safeExecFileAsync('docker', [
+    'ps', '--filter', `name=^${name}$`, '--filter', 'status=running', '--format', '{{.Names}}',
+  ]);
   return result === name;
 }
 
@@ -344,10 +294,11 @@ export async function isContainerRunning(name: string): Promise<boolean> {
  */
 export async function getContainerLogs(name: string, lines = 100): Promise<string> {
   try {
-    return execSync(`docker logs --tail=${lines} ${name} 2>&1`, {
+    const { stdout } = await execFileAsync('docker', ['logs', `--tail=${lines}`, name], {
       encoding: 'utf-8',
       timeout: 10_000,
-    }).trim();
+    });
+    return stdout.trim();
   } catch (err) {
     throw new Error(
       `Failed to get logs for "${name}": ${err instanceof Error ? err.message : String(err)}`,
@@ -365,10 +316,11 @@ export async function getContainerLogs(name: string, lines = 100): Promise<strin
  */
 export async function execInContainer(name: string, command: string): Promise<string> {
   try {
-    return execSync(
-      `docker exec ${name} sh -c ${JSON.stringify(command)}`,
-      { encoding: 'utf-8', timeout: 15_000 },
-    ).trim();
+    const { stdout } = await execFileAsync('docker', ['exec', name, 'sh', '-c', command], {
+      encoding: 'utf-8',
+      timeout: 15_000,
+    });
+    return stdout.trim();
   } catch (err) {
     throw new Error(
       `Failed to exec in "${name}": ${err instanceof Error ? err.message : String(err)}`,
@@ -386,7 +338,7 @@ export async function execInContainer(name: string, command: string): Promise<st
  * @param name - Network name
  */
 export async function ensureNetwork(name: string): Promise<void> {
-  safeExec(`docker network create ${name} 2>/dev/null || true`);
+  await safeExecFileAsync('docker', ['network', 'create', name]);
 }
 
 /**
@@ -395,7 +347,7 @@ export async function ensureNetwork(name: string): Promise<void> {
  * @param name - Network name
  */
 export async function removeNetwork(name: string): Promise<void> {
-  safeExec(`docker network rm ${name} 2>/dev/null || true`);
+  await safeExecFileAsync('docker', ['network', 'rm', name]);
 }
 
 // =====================================================================
@@ -413,17 +365,16 @@ export async function waitForHealthy(name: string, timeoutMs = 120_000): Promise
   const start = Date.now();
 
   while (Date.now() - start < timeoutMs) {
-    const healthStatus = safeExec(
-      `docker inspect --format "{{.State.Health.Status}}" ${name}`,
+    const healthStatus = await safeExecFileAsync(
+      'docker', ['inspect', '--format', '{{.State.Health.Status}}', name],
     );
 
     if (healthStatus === 'healthy') {
       return true;
     }
 
-    // If the container has exited or is dead, don't keep waiting
-    const containerStatus = safeExec(
-      `docker inspect --format "{{.State.Status}}" ${name}`,
+    const containerStatus = await safeExecFileAsync(
+      'docker', ['inspect', '--format', '{{.State.Status}}', name],
     );
     if (containerStatus === 'exited' || containerStatus === 'dead') {
       return false;
@@ -442,37 +393,28 @@ export async function waitForHealthy(name: string, timeoutMs = 120_000): Promise
 /**
  * Check whether a TCP port is currently in use on localhost.
  *
- * Uses Node.js `net.createServer` to attempt binding.
+ * Attempts to bind a temporary server on the port; `EADDRINUSE` means
+ * the port is already taken.
  *
  * @param port - Port number to check
  * @returns `true` if the port is in use
  */
-export function isPortInUse(port: number): boolean {
-  try {
+export async function isPortInUse(port: number): Promise<boolean> {
+  return new Promise((resolve) => {
     const server = createServer();
-    let inUse = false;
 
     server.once('error', (err: NodeJS.ErrnoException) => {
       if (err.code === 'EADDRINUSE') {
-        inUse = true;
+        resolve(true);
+      } else {
+        resolve(false);
       }
     });
 
-    // Try to listen synchronously by using execSync with a small Node script
-    const result = safeExec(
-      `node -e "const s=require('net').createServer();s.once('error',()=>process.exit(1));s.listen(${port},'127.0.0.1',()=>{s.close();process.exit(0)})"`,
-    );
-    // If the command succeeded (exit 0), the port is NOT in use
-    // safeExec returns '' on error (exit 1), meaning port IS in use
-    // But safeExec catches errors and returns '', so we need a different approach
-
-    server.close();
-    return inUse;
-  } catch {
-    // Fallback: use lsof
-    const result = safeExec(`lsof -i :${port} -t 2>/dev/null`);
-    return result.length > 0;
-  }
+    server.listen(port, '127.0.0.1', () => {
+      server.close(() => resolve(false));
+    });
+  });
 }
 
 /**
@@ -482,7 +424,7 @@ export function isPortInUse(port: number): boolean {
  * @returns `true` if the port is in use
  */
 export function isPortInUseSync(port: number): boolean {
-  const result = safeExec(`lsof -i :${port} -t 2>/dev/null`);
+  const result = safeExecFile('lsof', ['-i', `:${port}`, '-t']);
   return result.length > 0;
 }
 
@@ -497,8 +439,8 @@ export function isPortInUseSync(port: number): boolean {
  * @returns Container info record, or `null` if not found
  */
 export async function getContainerInfo(name: string): Promise<Record<string, string> | null> {
-  const result = safeExec(
-    `docker ps -a --filter "name=^${name}$" --format "{{json .}}"`,
+  const result = await safeExecFileAsync(
+    'docker', ['ps', '-a', '--filter', `name=^${name}$`, '--format', '{{json .}}'],
   );
   if (!result) return null;
   try {
@@ -582,13 +524,29 @@ export async function* streamContainerLogs(
 // =====================================================================
 
 /**
- * Safely execute a shell command, returning output or empty string on failure.
+ * Async safe execution — returns output or empty string on failure.
+ * Avoids shell injection by using execFile (no shell interpretation).
  */
-function safeExec(cmd: string, opts?: { cwd?: string }): string {
+async function safeExecFileAsync(bin: string, args: string[], opts?: { cwd?: string }): Promise<string> {
   try {
-    return execSync(cmd, {
+    const { stdout } = await execFileAsync(bin, args, {
       encoding: 'utf-8',
       cwd: opts?.cwd,
+      timeout: 10_000,
+    });
+    return stdout.trim();
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Sync safe execution — used only by isPortInUseSync which has sync callers.
+ */
+function safeExecFile(bin: string, args: string[]): string {
+  try {
+    return execFileSync(bin, args, {
+      encoding: 'utf-8',
       timeout: 10_000,
     }).trim();
   } catch {

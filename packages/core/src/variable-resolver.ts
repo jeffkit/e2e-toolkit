@@ -1,6 +1,6 @@
 /**
  * @module variable-resolver
- * Template variable resolution for e2e-toolkit.
+ * Template variable resolution for preflight.
  * Supports {{env.XXX}}, {{config.xxx}}, {{timestamp}}, {{uuid}}, {{date}},
  * and runtime variables in template strings and nested objects.
  */
@@ -116,7 +116,7 @@ export function resolveObjectVariables(obj: unknown, context: VariableContext): 
  */
 export function createVariableContext(config: E2EConfig): VariableContext {
   return {
-    config: config.service.vars ?? {},
+    config: config.service?.vars ?? {},
     runtime: {},
     env: { ...process.env } as Record<string, string>,
   };

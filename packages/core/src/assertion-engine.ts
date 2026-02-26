@@ -1,6 +1,6 @@
 /**
  * @module assertion-engine
- * Assertion DSL engine for e2e-toolkit.
+ * Assertion DSL engine for preflight.
  *
  * Evaluates YAML `expect` blocks against actual HTTP response data.
  * Supports exact matching, type checks, existence, numeric comparisons,

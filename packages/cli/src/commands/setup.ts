@@ -1,6 +1,6 @@
 /**
  * @module commands/setup
- * `e2e-toolkit setup` — One-command environment setup.
+ * `preflight setup` — One-command environment setup.
  *
  * Steps:
  * 1. Check dependencies (Docker, Node.js)
@@ -51,7 +51,7 @@ export function registerSetup(program: Command): void {
         createMockServer,
         buildBuildArgs,
         buildRunArgs,
-      } = await import('@e2e-toolkit/core');
+      } = await import('@preflight/core');
 
       const configPath = program.opts().config as string | undefined;
 

@@ -5,14 +5,17 @@
  * Integration tests that require Docker should be in a separate file.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   buildBuildArgs,
   buildRunArgs,
+  buildImage,
+  isPortInUse,
   isPortInUseSync,
   type DockerBuildOptions,
   type DockerRunOptions,
 } from '../../src/docker-engine.js';
+import { createServer } from 'node:net';
 
 describe('docker-engine', () => {
   describe('buildBuildArgs', () => {
@@ -257,16 +260,101 @@ describe('docker-engine', () => {
 
   describe('isPortInUseSync', () => {
     it('should return a boolean', () => {
-      // Port 99999 should almost certainly not be in use
       const result = isPortInUseSync(99999);
       expect(typeof result).toBe('boolean');
     });
 
     it('should detect a well-known unused high port as free', () => {
-      // Using a random high port that's very unlikely to be in use
       const result = isPortInUseSync(59123);
-      // We can't guarantee this, but it's very likely to be free
       expect(typeof result).toBe('boolean');
+    });
+  });
+
+  // ── Regression: T014 — buildImage event capture ─────────────────────
+  describe('buildImage (regression: event capture)', () => {
+    it('should use the queue-based pattern that yields build_log events', async () => {
+      const source = await import('node:fs/promises')
+        .then(fs => fs.readFile(
+          new URL('../../src/docker-engine.ts', import.meta.url).pathname,
+          'utf-8',
+        ));
+
+      const buildImageMatch = source.match(
+        /export async function\* buildImage[\s\S]*?^}/m,
+      );
+      expect(buildImageMatch).toBeTruthy();
+      const buildImageSrc = buildImageMatch![0];
+
+      expect(buildImageSrc).toContain('build_log');
+      expect(buildImageSrc).toContain('pushEvent');
+      expect(buildImageSrc).toContain('events.shift()');
+      expect(buildImageSrc).not.toContain("We can't yield from inside a callback");
+    });
+
+    it('should export buildImageStreaming as alias for backward compatibility', async () => {
+      const mod = await import('../../src/docker-engine.js');
+      expect(mod.buildImageStreaming).toBe(mod.buildImage);
+    });
+  });
+
+  // ── Regression: T015 — command injection prevention ─────────────────
+  describe('command injection prevention (regression)', () => {
+    it('should use execFileSync not execSync in buildRunArgs for container names with metacharacters', () => {
+      const options: DockerRunOptions = {
+        name: 'test; rm -rf /',
+        image: 'app:latest',
+        ports: ['8080:3000'],
+        environment: { 'FOO': '$(whoami)' },
+      };
+      const args = buildRunArgs(options);
+      expect(args).toContain('test; rm -rf /');
+      expect(args).toContain('FOO=$(whoami)');
+    });
+
+    it('should not import execSync from child_process', async () => {
+      const source = await import('node:fs/promises')
+        .then(fs => fs.readFile(
+          new URL('../../src/docker-engine.ts', import.meta.url).pathname,
+          'utf-8',
+        ));
+      expect(source).not.toMatch(/\bimport\b.*\bexecSync\b.*from/);
+      expect(source).toMatch(/\bexecFileSync\b/);
+    });
+  });
+
+  // ── Regression: T016 — isPortInUse async detection ──────────────────
+  describe('isPortInUse (regression: async detection)', () => {
+    it('should return true for a port in use', async () => {
+      const server = createServer();
+      const port = await new Promise<number>((resolve, reject) => {
+        server.listen(0, '127.0.0.1', () => {
+          const addr = server.address();
+          if (addr && typeof addr === 'object') resolve(addr.port);
+          else reject(new Error('Failed to get port'));
+        });
+      });
+
+      try {
+        const result = await isPortInUse(port);
+        expect(result).toBe(true);
+      } finally {
+        server.close();
+      }
+    });
+
+    it('should return false for a free port', async () => {
+      const server = createServer();
+      const port = await new Promise<number>((resolve, reject) => {
+        server.listen(0, '127.0.0.1', () => {
+          const addr = server.address();
+          if (addr && typeof addr === 'object') resolve(addr.port);
+          else reject(new Error('Failed to get port'));
+        });
+      });
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+
+      const result = await isPortInUse(port);
+      expect(result).toBe(false);
     });
   });
 });

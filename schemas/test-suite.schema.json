@@ -1,0 +1,85 @@
+{
+  "$ref": "#/definitions/TestSuite",
+  "definitions": {
+    "TestSuite": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Human-readable suite name"
+        },
+        "id": {
+          "type": "string",
+          "description": "Unique suite identifier (used for filtering and reporting)"
+        },
+        "file": {
+          "type": "string",
+          "description": "Path to the test file (relative to e2e.yaml directory)"
+        },
+        "runner": {
+          "type": "string",
+          "description": "Test runner type: yaml, vitest, pytest, shell, exec, or playwright"
+        },
+        "command": {
+          "type": "string",
+          "description": "Custom command to execute (for exec runner)"
+        },
+        "config": {
+          "type": "string",
+          "description": "Runner-specific configuration file path"
+        },
+        "retry": {
+          "type": "object",
+          "properties": {
+            "maxAttempts": {
+              "type": "number",
+              "minimum": 1,
+              "maximum": 10,
+              "description": "Maximum retry attempts including first try"
+            },
+            "delay": {
+              "type": "string",
+              "description": "Delay between retries, e.g. \"2s\", \"500ms\""
+            },
+            "backoff": {
+              "type": "string",
+              "enum": [
+                "linear",
+                "exponential"
+              ],
+              "description": "Backoff strategy"
+            },
+            "backoffMultiplier": {
+              "type": "number",
+              "default": 2,
+              "description": "Multiplier for exponential backoff"
+            }
+          },
+          "required": [
+            "maxAttempts",
+            "delay"
+          ],
+          "additionalProperties": false,
+          "description": "Suite-level retry policy (overrides global)"
+        },
+        "parallel": {
+          "type": "boolean",
+          "description": "Enable parallel execution for this suite"
+        },
+        "concurrency": {
+          "type": "number",
+          "description": "Maximum concurrency for parallel test cases"
+        }
+      },
+      "required": [
+        "name",
+        "id"
+      ],
+      "additionalProperties": false,
+      "description": "Test suite configuration"
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Preflight Test Suite",
+  "description": "Schema for individual test suite configuration within the tests.suites array."
+}

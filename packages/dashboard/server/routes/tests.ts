@@ -8,8 +8,8 @@
 import { type FastifyPluginAsync } from 'fastify';
 import { spawn } from 'child_process';
 import path from 'path';
-import type { E2EConfig, TestSuiteConfig, TestEvent } from '@e2e-toolkit/core';
-import { loadYAMLTests, executeYAMLSuite } from '@e2e-toolkit/core';
+import type { E2EConfig, TestSuiteConfig, TestEvent } from '@preflight/core';
+import { loadYAMLTests, executeYAMLSuite } from '@preflight/core';
 import { getAppState } from '../app-state.js';
 
 /** 去除 ANSI 转义码 */

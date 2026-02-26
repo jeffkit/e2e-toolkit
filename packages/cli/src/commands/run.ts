@@ -1,6 +1,6 @@
 /**
  * @module commands/run
- * `e2e-toolkit run` — Execute test suites.
+ * `preflight run` — Execute test suites.
  *
  * Steps:
  * 1. Load e2e.yaml
@@ -33,7 +33,7 @@ export function registerRun(program: Command): void {
         createDefaultRegistry,
         ConsoleReporter,
         JSONReporter,
-      } = await import('@e2e-toolkit/core');
+      } = await import('@preflight/core');
 
       const configPath = program.opts().config as string | undefined;
 

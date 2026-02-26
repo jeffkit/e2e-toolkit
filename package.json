@@ -1,16 +1,16 @@
 {
-  "name": "e2e-toolkit",
+  "name": "preflight",
   "private": true,
   "version": "0.1.0",
-  "description": "配置驱动的 Docker 容器端到端测试平台",
+  "description": "AI 编程自动验收基建 — 配置驱动的 Docker 容器端到端测试平台",
   "type": "module",
   "scripts": {
     "build": "pnpm -r build",
-    "dev": "E2E_CONFIG=../../examples/as-mate/e2e.yaml pnpm --filter @e2e-toolkit/dashboard dev",
-    "dev:dashboard": "E2E_CONFIG=../../examples/as-mate/e2e.yaml pnpm --filter @e2e-toolkit/dashboard dev",
-    "test": "pnpm -r --filter '@e2e-toolkit/*' test",
-    "test:run": "pnpm -r --filter '@e2e-toolkit/*' test:run",
-    "test:coverage": "pnpm -r --filter '@e2e-toolkit/*' test:run -- --coverage",
+    "dev": "E2E_CONFIG=../../examples/as-mate/e2e.yaml pnpm --filter @preflight/dashboard dev",
+    "dev:dashboard": "E2E_CONFIG=../../examples/as-mate/e2e.yaml pnpm --filter @preflight/dashboard dev",
+    "test": "pnpm -r --filter '@preflight/*' test",
+    "test:run": "pnpm -r --filter '@preflight/*' test:run",
+    "test:coverage": "pnpm -r --filter '@preflight/*' test:run -- --coverage",
     "lint": "eslint packages/",
     "type-check": "tsc -b"
   },

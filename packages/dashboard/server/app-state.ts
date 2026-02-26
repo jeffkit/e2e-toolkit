@@ -4,8 +4,8 @@
  * 所有路由按请求读取此状态，切换项目时原地更新。
  */
 
-import type { E2EConfig } from '@e2e-toolkit/core';
-import { EventBus } from '@e2e-toolkit/core';
+import type { E2EConfig } from '@preflight/core';
+import { EventBus } from '@preflight/core';
 
 export interface AppState {
   config: E2EConfig | null;

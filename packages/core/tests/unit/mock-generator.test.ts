@@ -347,4 +347,27 @@ describe('mock-generator', () => {
       expect(resolveResponseTemplate(null, ctx)).toBe(null);
     });
   });
+
+  // ── Regression: T018 — per-instance startTime ──────────────────────
+  describe('per-instance startTime (regression)', () => {
+    it('should report independent uptime for each mock server', async () => {
+      const config1: MockServiceConfig = { port: 9091, routes: [] };
+      const app1 = createMockServer(config1);
+      await app1.ready();
+
+      await new Promise<void>((resolve) => setTimeout(resolve, 100));
+
+      const config2: MockServiceConfig = { port: 9092, routes: [] };
+      const app2 = createMockServer(config2);
+      await app2.ready();
+
+      const res1 = await app1.inject({ method: 'GET', url: '/_mock/health' });
+      const res2 = await app2.inject({ method: 'GET', url: '/_mock/health' });
+
+      const uptime1 = (res1.json() as { uptime: number }).uptime;
+      const uptime2 = (res2.json() as { uptime: number }).uptime;
+
+      expect(uptime1).toBeGreaterThan(uptime2);
+    });
+  });
 });

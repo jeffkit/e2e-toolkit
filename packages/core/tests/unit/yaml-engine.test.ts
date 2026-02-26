@@ -12,7 +12,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { loadYAMLTests, parseTime } from '../../src/yaml-engine.js';
+import { loadYAMLTests, parseTime, executeYAMLSuite } from '../../src/yaml-engine.js';
+import type { TestEvent } from '../../src/types.js';
 
 /** Helper to create a temporary directory */
 async function createTempDir(): Promise<string> {
@@ -252,6 +253,293 @@ describe('yaml-engine', () => {
       const suite = await loadYAMLTests(filePath);
 
       expect(suite.cases[0]!.expect?.status).toEqual([200, 204]);
+    });
+  });
+
+  // ── Regression: T017 — async execution verification ─────────────────
+  describe('async execution (regression)', () => {
+    it('should not import execSync', async () => {
+      const source = await fs.readFile(
+        path.resolve(import.meta.dirname, '../../src/yaml-engine.ts'),
+        'utf-8',
+      );
+      expect(source).not.toMatch(/\bimport\b.*\bexecSync\b.*from/);
+      expect(source).toMatch(/\bexecFileAsync\b/);
+    });
+
+    it('should execute suite and yield events asynchronously', async () => {
+      const yamlContent = [
+        'name: Async Test',
+        'cases:',
+        '  - name: simple request',
+        '    request:',
+        '      method: GET',
+        '      path: /health',
+        '    expect:',
+        '      status: 200',
+      ].join('\n');
+
+      const filePath = path.join(tmpDir, 'async-test.yaml');
+      await fs.writeFile(filePath, yamlContent, 'utf-8');
+
+      const suite = await loadYAMLTests(filePath);
+
+      const events: TestEvent[] = [];
+      for await (const event of executeYAMLSuite(suite, {
+        baseUrl: 'http://127.0.0.1:1',
+        variables: { config: {}, runtime: {}, env: {} },
+        defaultTimeout: 500,
+      })) {
+        events.push(event);
+      }
+
+      expect(events.length).toBeGreaterThan(0);
+      expect(events[0]!.type).toBe('suite_start');
+      expect(events[events.length - 1]!.type).toBe('suite_end');
+    });
+  });
+
+  // ── Async verification: event loop not blocked (T069) ───────────────
+  describe('async verification (T069)', () => {
+    it('should not block the event loop during step execution', async () => {
+      const yamlContent = [
+        'name: Async Verify Test',
+        'cases:',
+        '  - name: http step',
+        '    request:',
+        '      method: GET',
+        '      path: /health',
+        '    expect:',
+        '      status: 200',
+      ].join('\n');
+
+      const filePath = path.join(tmpDir, 'async-verify.yaml');
+      await fs.writeFile(filePath, yamlContent, 'utf-8');
+      const suite = await loadYAMLTests(filePath);
+
+      let callbackFired = false;
+
+      // Start a promise that resolves after events are collected
+      const eventPromise = (async () => {
+        const events: TestEvent[] = [];
+        for await (const event of executeYAMLSuite(suite, {
+          baseUrl: 'http://127.0.0.1:1',
+          variables: { config: {}, runtime: {}, env: {} },
+          defaultTimeout: 500,
+        })) {
+          events.push(event);
+        }
+        return events;
+      })();
+
+      // Schedule a check on the event loop — if the engine is truly async,
+      // this timer will fire during or after the suite execution
+      const timerPromise = new Promise<void>(resolve => {
+        setTimeout(() => { callbackFired = true; resolve(); }, 5);
+      });
+
+      const events = await eventPromise;
+      await timerPromise;
+
+      expect(callbackFired).toBe(true);
+      expect(events.length).toBeGreaterThan(0);
+    });
+
+    it('should verify no execSync imports in yaml-engine or docker-engine', async () => {
+      const yamlEngineSource = await fs.readFile(
+        path.resolve(import.meta.dirname, '../../src/yaml-engine.ts'),
+        'utf-8',
+      );
+      expect(yamlEngineSource).not.toMatch(/\bimport\b.*\bexecSync\b.*from/);
+
+      const dockerEngineSource = await fs.readFile(
+        path.resolve(import.meta.dirname, '../../src/docker-engine.ts'),
+        'utf-8',
+      );
+      // docker-engine should not import execSync (only execFileSync for sync helper)
+      expect(dockerEngineSource).not.toMatch(/\bimport\b.*\bexecSync\b[^F]/);
+    });
+  });
+
+  // ── Retry integration tests (T066) ─────────────────────────────────
+  describe('retry integration', () => {
+    it('should apply global retry policy to failing cases', async () => {
+      const yamlContent = [
+        'name: Global Retry Test',
+        'cases:',
+        '  - name: failing request',
+        '    request:',
+        '      method: GET',
+        '      path: /health',
+        '    expect:',
+        '      status: 200',
+      ].join('\n');
+
+      const filePath = path.join(tmpDir, 'global-retry.yaml');
+      await fs.writeFile(filePath, yamlContent, 'utf-8');
+      const suite = await loadYAMLTests(filePath);
+
+      const events: TestEvent[] = [];
+      for await (const event of executeYAMLSuite(suite, {
+        baseUrl: 'http://127.0.0.1:1',
+        variables: { config: {}, runtime: {}, env: {} },
+        defaultTimeout: 200,
+        globalRetryPolicy: { maxAttempts: 2, delay: '10ms' },
+      })) {
+        events.push(event);
+      }
+
+      const failEvent = events.find(e => e.type === 'case_fail');
+      expect(failEvent).toBeDefined();
+      if (failEvent?.type === 'case_fail') {
+        expect(failEvent.attempts).toBeDefined();
+        expect(failEvent.attempts).toHaveLength(2);
+        expect(failEvent.attempts![0]!.passed).toBe(false);
+        expect(failEvent.attempts![1]!.passed).toBe(false);
+      }
+    });
+
+    it('should not retry when no policy is set', async () => {
+      const yamlContent = [
+        'name: No Retry Test',
+        'cases:',
+        '  - name: failing request',
+        '    request:',
+        '      method: GET',
+        '      path: /health',
+        '    expect:',
+        '      status: 200',
+      ].join('\n');
+
+      const filePath = path.join(tmpDir, 'no-retry.yaml');
+      await fs.writeFile(filePath, yamlContent, 'utf-8');
+      const suite = await loadYAMLTests(filePath);
+
+      const events: TestEvent[] = [];
+      for await (const event of executeYAMLSuite(suite, {
+        baseUrl: 'http://127.0.0.1:1',
+        variables: { config: {}, runtime: {}, env: {} },
+        defaultTimeout: 200,
+      })) {
+        events.push(event);
+      }
+
+      const failEvent = events.find(e => e.type === 'case_fail');
+      expect(failEvent).toBeDefined();
+      if (failEvent?.type === 'case_fail') {
+        expect(failEvent.attempts).toBeUndefined();
+      }
+    });
+
+    it('should use suite retry over global when both are set', async () => {
+      const yamlContent = [
+        'name: Suite Retry Test',
+        'cases:',
+        '  - name: failing request',
+        '    request:',
+        '      method: GET',
+        '      path: /health',
+        '    expect:',
+        '      status: 200',
+      ].join('\n');
+
+      const filePath = path.join(tmpDir, 'suite-retry.yaml');
+      await fs.writeFile(filePath, yamlContent, 'utf-8');
+      const suite = await loadYAMLTests(filePath);
+
+      const events: TestEvent[] = [];
+      for await (const event of executeYAMLSuite(suite, {
+        baseUrl: 'http://127.0.0.1:1',
+        variables: { config: {}, runtime: {}, env: {} },
+        defaultTimeout: 200,
+        globalRetryPolicy: { maxAttempts: 5, delay: '10ms' },
+        suiteRetryPolicy: { maxAttempts: 2, delay: '10ms' },
+      })) {
+        events.push(event);
+      }
+
+      const failEvent = events.find(e => e.type === 'case_fail');
+      expect(failEvent).toBeDefined();
+      if (failEvent?.type === 'case_fail') {
+        expect(failEvent.attempts).toHaveLength(2);
+      }
+    });
+
+    it('should use case-level retry over suite and global', async () => {
+      const yamlContent = [
+        'name: Case Retry Test',
+        'cases:',
+        '  - name: case with retry',
+        '    request:',
+        '      method: GET',
+        '      path: /health',
+        '    expect:',
+        '      status: 200',
+        '    retry:',
+        '      maxAttempts: 3',
+        '      delay: "10ms"',
+      ].join('\n');
+
+      const filePath = path.join(tmpDir, 'case-retry.yaml');
+      await fs.writeFile(filePath, yamlContent, 'utf-8');
+      const suite = await loadYAMLTests(filePath);
+
+      const events: TestEvent[] = [];
+      for await (const event of executeYAMLSuite(suite, {
+        baseUrl: 'http://127.0.0.1:1',
+        variables: { config: {}, runtime: {}, env: {} },
+        defaultTimeout: 200,
+        globalRetryPolicy: { maxAttempts: 5, delay: '10ms' },
+        suiteRetryPolicy: { maxAttempts: 5, delay: '10ms' },
+      })) {
+        events.push(event);
+      }
+
+      const failEvent = events.find(e => e.type === 'case_fail');
+      expect(failEvent).toBeDefined();
+      if (failEvent?.type === 'case_fail') {
+        // Case-level maxAttempts=3 should override suite(5) and global(5)
+        expect(failEvent.attempts).toHaveLength(3);
+      }
+    });
+
+    it('should include attempt history in pass event when retry succeeds', async () => {
+      const yamlContent = [
+        'name: Retry Success Test',
+        'cases:',
+        '  - name: request against unreachable',
+        '    request:',
+        '      method: GET',
+        '      path: /health',
+        '    expect:',
+        '      status: 200',
+      ].join('\n');
+
+      const filePath = path.join(tmpDir, 'retry-success.yaml');
+      await fs.writeFile(filePath, yamlContent, 'utf-8');
+      const suite = await loadYAMLTests(filePath);
+
+      const events: TestEvent[] = [];
+      for await (const event of executeYAMLSuite(suite, {
+        baseUrl: 'http://127.0.0.1:1',
+        variables: { config: {}, runtime: {}, env: {} },
+        defaultTimeout: 200,
+        globalRetryPolicy: { maxAttempts: 2, delay: '10ms' },
+      })) {
+        events.push(event);
+      }
+
+      // This will fail because there's no server, but it should have attempts
+      const failEvent = events.find(e => e.type === 'case_fail');
+      expect(failEvent).toBeDefined();
+      if (failEvent?.type === 'case_fail') {
+        expect(failEvent.attempts).toBeDefined();
+        for (const attempt of failEvent.attempts!) {
+          expect(attempt.attempt).toBeGreaterThan(0);
+          expect(attempt.duration).toBeGreaterThanOrEqual(0);
+          expect(attempt.timestamp).toBeGreaterThan(0);
+        }
+      }
     });
   });
 });

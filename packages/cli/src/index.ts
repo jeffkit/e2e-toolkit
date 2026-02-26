@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * @module @e2e-toolkit/cli
- * CLI entry point for e2e-toolkit.
+ * @module @preflight/cli
+ * CLI entry point for preflight.
  *
  * Registers all sub-commands and parses process.argv via Commander.js.
  */
@@ -15,12 +15,13 @@ import { registerStatus } from './commands/status.js';
 import { registerClean } from './commands/clean.js';
 import { registerDashboard } from './commands/dashboard.js';
 import { registerLogs } from './commands/logs.js';
+import { registerMcpServer } from './commands/mcp-server.js';
 
 export function createProgram(): Command {
   const program = new Command();
 
   program
-    .name('e2e-toolkit')
+    .name('preflight')
     .description('配置驱动的 Docker 容器端到端测试平台')
     .version('0.1.0')
     .option('-c, --config <path>', 'e2e.yaml 配置文件路径')
@@ -35,6 +36,7 @@ export function createProgram(): Command {
   registerClean(program);
   registerDashboard(program);
   registerLogs(program);
+  registerMcpServer(program);
 
   return program;
 }

@@ -1,5 +1,5 @@
 /**
- * E2E Toolkit Dashboard 后端服务器
+ * Preflight Dashboard 后端服务器
  *
  * 支持多项目管理与动态切换。
  */
@@ -9,7 +9,7 @@ import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { loadConfig, createEventBus, type E2EConfig } from '@e2e-toolkit/core';
+import { loadConfig, createEventBus, type E2EConfig } from '@preflight/core';
 import { initAppState, getAppState } from './app-state.js';
 import { addProject, loadRegistry, getActiveProject } from './project-registry.js';
 import { dockerRoutes } from './routes/docker.js';
@@ -110,7 +110,7 @@ app.get('/api/health', async () => {
   const state = getAppState();
   return {
     status: 'ok',
-    service: 'e2e-toolkit-dashboard',
+    service: 'preflight-dashboard',
     project: state.config?.project.name ?? 'unconfigured',
     version: state.config?.project.version,
     containerName: state.config?.service.container.name ?? 'unknown',
@@ -144,7 +144,7 @@ try {
 async function start() {
   try {
     await app.listen({ port: PORT, host: '0.0.0.0' });
-    console.log(`\n🎯 E2E Dashboard running on http://localhost:${PORT}`);
+    console.log(`\n🎯 Preflight Dashboard running on http://localhost:${PORT}`);
     if (appState.config) {
       console.log(`   Project: ${appState.config.project.name}`);
       console.log(`   Container: ${appState.config.service.container.name}`);
@@ -153,7 +153,7 @@ async function start() {
     console.log(`   Registered projects: ${registry.projects.length}`);
     console.log('');
   } catch (err) {
-    console.error('Failed to start E2E dashboard:', err);
+    console.error('Failed to start Preflight dashboard:', err);
     process.exit(1);
   }
 }

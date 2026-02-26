@@ -1,8 +1,8 @@
 /**
  * @module commands/dashboard
- * `e2e-toolkit dashboard` — Launch the Dashboard UI.
+ * `preflight dashboard` — Launch the Dashboard UI.
  *
- * Since the dashboard is an independent package (`@e2e-toolkit/dashboard`),
+ * Since the dashboard is an independent package (`@preflight/dashboard`),
  * this command attempts to spawn the dashboard dev server directly.
  * If that fails it prints manual instructions.
  */
@@ -30,7 +30,7 @@ export function registerDashboard(program: Command): void {
       // Try to resolve dashboard package location
       const dashboardDir = path.resolve(__dirname, '../../../dashboard');
 
-      console.log(`\n${BOLD}E2E Toolkit Dashboard${RESET}\n`);
+      console.log(`\n${BOLD}Preflight Dashboard${RESET}\n`);
 
       // Attempt to spawn the dashboard process
       try {

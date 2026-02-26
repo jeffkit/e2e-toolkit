@@ -83,12 +83,18 @@ export interface TestSuiteConfig {
   id: string;
   /** 测试文件路径 */
   file?: string;
-  /** 运行器类型 */
+  /** 运行器类型 (yaml, vitest, pytest, shell, exec, playwright) */
   runner?: string;
   /** 自定义命令 */
   command?: string;
   /** Vitest 配置文件 */
   config?: string;
+  /** Suite-level retry policy override */
+  retry?: RetryPolicy;
+  /** Enable parallel execution for this suite */
+  parallel?: boolean;
+  /** Maximum concurrency for this suite's cases */
+  concurrency?: number;
 }
 
 /** 预定义 API 端点 */
@@ -137,9 +143,18 @@ export interface NetworkConfig {
 export interface E2EConfig {
   version: string;
   project: { name: string; description?: string; version?: string };
-  service: ServiceConfig;
+  /** Single service (backward compatible) */
+  service?: ServiceConfig;
+  /** Multiple services (new, takes precedence over service) */
+  services?: ServiceDefinition[];
   mocks?: Record<string, MockServiceConfig>;
-  tests?: { suites: TestSuiteConfig[] };
+  tests?: {
+    suites: TestSuiteConfig[];
+    /** Global retry policy (applies to all cases without case-level retry) */
+    retry?: RetryPolicy;
+    /** Global parallel execution config */
+    parallel?: ParallelConfig;
+  };
   dashboard?: DashboardConfig;
   network?: NetworkConfig;
   /** Git 仓库列表（用于分支选择与构建前 checkout） */
@@ -257,6 +272,8 @@ export interface TestStep {
   save?: Record<string, string>;
   /** 忽略错误继续执行 */
   ignoreError?: boolean;
+  /** Per-case retry policy (overrides global and suite-level) */
+  retry?: RetryPolicy;
 }
 
 /** YAML 测试套件定义 */
@@ -270,13 +287,118 @@ export interface YAMLTestSuite {
   cases: TestStep[];
 }
 
+// ==================== AI-Native Types ====================
+
+/** Structured test result enriched with full diagnostic context for AI consumption. */
+export interface AIFriendlyTestResult {
+  name: string;
+  suite: string;
+  status: 'passed' | 'failed' | 'skipped';
+  duration: number;
+  timestamp: number;
+
+  failure?: {
+    error: string;
+    summary: string;
+    suggestedFix?: string;
+
+    request?: {
+      method: string;
+      url: string;
+      headers: Record<string, string>;
+      body?: unknown;
+    };
+
+    response?: {
+      status: number;
+      headers: Record<string, string>;
+      body?: unknown;
+    };
+
+    assertions: AssertionResult[];
+    diagnostics: DiagnosticReport;
+  };
+
+  attempts?: AttemptResult[];
+}
+
+/** Container and environment diagnostic data collected on test failure. */
+export interface DiagnosticReport {
+  containerLogs: Array<{
+    containerName: string;
+    lines: string[];
+    lineCount: number;
+  }>;
+
+  containerHealth: Array<{
+    containerName: string;
+    status: ContainerStatus;
+    healthLog?: string;
+  }>;
+
+  mockRequests: Array<{
+    mockName: string;
+    requests: Array<{
+      method: string;
+      url: string;
+      body: unknown;
+      headers: Record<string, string | string[] | undefined>;
+      timestamp: string;
+    }>;
+  }>;
+
+  networkInfo?: {
+    networkName: string;
+    connectedContainers: string[];
+  };
+
+  collectedAt: number;
+}
+
+/** Configuration for test case retry behavior. */
+export interface RetryPolicy {
+  maxAttempts: number;
+  delay: string;
+  backoff?: 'linear' | 'exponential';
+  backoffMultiplier?: number;
+}
+
+/** Result of a single retry attempt. */
+export interface AttemptResult {
+  attempt: number;
+  passed: boolean;
+  error?: string;
+  duration: number;
+  timestamp: number;
+}
+
+/** Configuration for a single service in multi-service orchestration. */
+export interface ServiceDefinition {
+  name: string;
+  build: ServiceBuildConfig;
+  container: ServiceContainerConfig;
+  vars?: Record<string, string>;
+  dependsOn?: string[];
+}
+
+/** Suite-level parallel execution configuration. */
+export interface ParallelConfig {
+  enabled: boolean;
+  concurrency?: number;
+}
+
 // ==================== 测试事件 ====================
 
 export type TestEvent =
   | { type: 'suite_start'; suite: string; timestamp: number }
   | { type: 'case_start'; suite: string; name: string; timestamp: number }
-  | { type: 'case_pass'; suite: string; name: string; duration: number; timestamp: number }
-  | { type: 'case_fail'; suite: string; name: string; error: string; duration: number; timestamp: number }
+  | { type: 'case_pass'; suite: string; name: string; duration: number; timestamp: number;
+      attempts?: AttemptResult[] }
+  | { type: 'case_fail'; suite: string; name: string; error: string; duration: number;
+      timestamp: number; diagnostics?: DiagnosticReport; attempts?: AttemptResult[];
+      request?: { method: string; url: string; headers: Record<string, string>; body?: unknown };
+      response?: { status: number; headers: Record<string, string>; body?: unknown };
+      assertions?: AssertionResult[] }
   | { type: 'case_skip'; suite: string; name: string; reason?: string; timestamp: number }
   | { type: 'suite_end'; suite: string; passed: number; failed: number; skipped: number; duration: number; timestamp: number }
   | { type: 'log'; level: 'info' | 'warn' | 'error'; message: string; timestamp: number };
@@ -348,6 +470,8 @@ export interface SuiteReport {
     status: 'passed' | 'failed' | 'skipped';
     duration: number;
     error?: string;
+    attempts?: AttemptResult[];
+    diagnostics?: DiagnosticReport;
   }>;
 }
 

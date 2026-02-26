@@ -1,9 +1,9 @@
-# Feature Specification: E2E Testing Toolkit
+# Feature Specification: Preflight
 
-**Feature Branch**: `001-e2e-toolkit`  
+**Feature Branch**: `001-preflight`  
 **Created**: 2026-02-12  
 **Status**: Draft  
-**Input**: User description: "将现有的 as-mate/e2e 测试系统重构为一个独立的、通用的 Docker E2E Testing Toolkit"
+**Input**: User description: "将现有的 as-mate/e2e 测试系统重构为一个独立的、通用的 Docker Preflight"
 
 ## User Scenarios & Testing *(mandatory)*
 
@@ -14,18 +14,18 @@
 **Why this priority**: 这是工具的核心价值主张 - 零代码配置驱动的测试能力。如果开发者无法快速接入，工具就失去了通用性。这是 MVP 必须支持的核心场景。
 
 **Independent Test**: 可以通过以下步骤独立验证：
-1. 在一个新的 Docker 化项目目录中运行 `e2e-toolkit init`
+1. 在一个新的 Docker 化项目目录中运行 `preflight init`
 2. 编辑生成的 `e2e.yaml` 模板，填写服务的基本信息（Dockerfile 路径、端口等）
 3. 编写 1-2 个简单的 YAML 测试用例（如健康检查）
-4. 运行 `e2e-toolkit setup` 完成环境初始化
-5. 运行 `e2e-toolkit run` 成功执行测试
+4. 运行 `preflight setup` 完成环境初始化
+5. 运行 `preflight run` 成功执行测试
 
 **Acceptance Scenarios**:
 
-1. **Given** 开发者有一个包含 Dockerfile 的项目目录, **When** 运行 `e2e-toolkit init`, **Then** 系统生成 `e2e.yaml` 配置文件模板，包含所有必要的配置节（project, tests, mocks）
-2. **Given** 开发者已编辑 `e2e.yaml` 配置了服务信息, **When** 运行 `e2e-toolkit setup`, **Then** 系统检查依赖、构建 Docker 镜像、启动容器、验证健康状态，整个过程通过 SSE 实时反馈进度
-3. **Given** 开发者已编写 YAML 测试用例, **When** 运行 `e2e-toolkit run`, **Then** 系统执行测试并输出结果，支持 `--suite` 参数过滤特定测试套件
-4. **Given** 开发者配置了 Mock 服务路由, **When** 运行 `e2e-toolkit setup`, **Then** 系统自动生成并启动 Mock 服务容器，提供 `/_mock/health` 等管理接口
+1. **Given** 开发者有一个包含 Dockerfile 的项目目录, **When** 运行 `preflight init`, **Then** 系统生成 `e2e.yaml` 配置文件模板，包含所有必要的配置节（project, tests, mocks）
+2. **Given** 开发者已编辑 `e2e.yaml` 配置了服务信息, **When** 运行 `preflight setup`, **Then** 系统检查依赖、构建 Docker 镜像、启动容器、验证健康状态，整个过程通过 SSE 实时反馈进度
+3. **Given** 开发者已编写 YAML 测试用例, **When** 运行 `preflight run`, **Then** 系统执行测试并输出结果，支持 `--suite` 参数过滤特定测试套件
+4. **Given** 开发者配置了 Mock 服务路由, **When** 运行 `preflight setup`, **Then** 系统自动生成并启动 Mock 服务容器，提供 `/_mock/health` 等管理接口
 
 ---
 
@@ -36,8 +36,8 @@
 **Why this priority**: 这是工具的高频使用场景。开发者每天都会多次使用这个工作流，必须流畅高效。Dashboard 的可视化能力是提升开发体验的关键。
 
 **Independent Test**: 可以通过以下步骤独立验证：
-1. 修改服务代码后运行 `e2e-toolkit build` 重新构建镜像
-2. 通过 `e2e-toolkit dashboard` 打开 Dashboard
+1. 修改服务代码后运行 `preflight build` 重新构建镜像
+2. 通过 `preflight dashboard` 打开 Dashboard
 3. 在 Dashboard 的"镜像构建"页面查看构建日志（SSE 实时流）
 4. 在"容器管理"页面重启容器
 5. 在"API 调试"页面手动测试 API
@@ -45,7 +45,7 @@
 
 **Acceptance Scenarios**:
 
-1. **Given** 开发者修改了服务代码, **When** 运行 `e2e-toolkit build`, **Then** 系统重新构建 Docker 镜像，通过 SSE 实时输出构建日志，支持 `--no-cache` 选项强制重新构建
+1. **Given** 开发者修改了服务代码, **When** 运行 `preflight build`, **Then** 系统重新构建 Docker 镜像，通过 SSE 实时输出构建日志，支持 `--no-cache` 选项强制重新构建
 2. **Given** Dashboard 已启动, **When** 访问镜像构建页面并点击"开始构建", **Then** 页面通过 SSE 实时显示构建进度和日志，支持分支选择、构建参数配置
 3. **Given** 容器正在运行, **When** 在 Dashboard 容器管理页面点击"重启", **Then** 容器重启，页面实时显示容器状态、日志流、进程列表
 4. **Given** 容器已启动, **When** 在 Dashboard API 调试页面发送请求, **Then** 请求被代理到容器，响应实时显示，支持自定义请求头、请求体
@@ -60,18 +60,18 @@
 **Why this priority**: CI 集成是生产环境质量保证的关键环节，但不是 MVP 的核心。可以在 P1 功能稳定后再完善。支持 CI 模式可以确保工具在生产环境可用。
 
 **Independent Test**: 可以通过以下步骤独立验证：
-1. 在 CI 脚本中运行 `e2e-toolkit setup --skip-dashboard`
-2. 运行 `e2e-toolkit run --ci --reporter json > test-results.json`
+1. 在 CI 脚本中运行 `preflight setup --skip-dashboard`
+2. 运行 `preflight run --ci --reporter json > test-results.json`
 3. 验证 JSON 报告包含所有测试结果、执行时间、断言详情
-4. 运行 `e2e-toolkit clean` 清理所有资源
+4. 运行 `preflight clean` 清理所有资源
 5. 验证退出码正确（成功 0，失败非 0）
 
 **Acceptance Scenarios**:
 
-1. **Given** CI 环境已安装 Docker 和 Node.js, **When** 运行 `e2e-toolkit setup --skip-dashboard`, **Then** 系统完成环境初始化但不启动 Dashboard，所有操作通过 CLI 完成
-2. **Given** 测试环境已就绪, **When** 运行 `e2e-toolkit run --ci --reporter json`, **Then** 系统执行所有测试，输出 JSON 格式报告到 stdout，包含每个测试的状态、耗时、错误信息
-3. **Given** 测试执行完成（无论成功或失败）, **When** 运行 `e2e-toolkit clean`, **Then** 系统清理所有容器、网络、卷，退出码为 0
-4. **Given** 测试执行失败, **When** CI 脚本检查退出码, **Then** `e2e-toolkit run` 返回非 0 退出码，CI 流水线正确识别失败
+1. **Given** CI 环境已安装 Docker 和 Node.js, **When** 运行 `preflight setup --skip-dashboard`, **Then** 系统完成环境初始化但不启动 Dashboard，所有操作通过 CLI 完成
+2. **Given** 测试环境已就绪, **When** 运行 `preflight run --ci --reporter json`, **Then** 系统执行所有测试，输出 JSON 格式报告到 stdout，包含每个测试的状态、耗时、错误信息
+3. **Given** 测试执行完成（无论成功或失败）, **When** 运行 `preflight clean`, **Then** 系统清理所有容器、网络、卷，退出码为 0
+4. **Given** 测试执行失败, **When** CI 脚本检查退出码, **Then** `preflight run` 返回非 0 退出码，CI 流水线正确识别失败
 
 ---
 
@@ -106,7 +106,7 @@
 **Independent Test**: 可以通过以下步骤独立验证：
 1. 编写一个 Vitest 测试文件（.test.ts）
 2. 在 `e2e.yaml` 中配置 Vitest 运行器
-3. 运行 `e2e-toolkit run --suite vitest-suite`
+3. 运行 `preflight run --suite vitest-suite`
 4. 验证测试执行，TestEvent 正确输出到 Dashboard/CLI
 
 **Acceptance Scenarios**:
@@ -211,14 +211,14 @@
 
 #### F7: CLI 工具
 
-- **FR-057**: System MUST provide `e2e-toolkit init` command to generate `e2e.yaml` template
-- **FR-058**: System MUST provide `e2e-toolkit setup` command (dependency check, build, start, health verification)
-- **FR-059**: System MUST provide `e2e-toolkit run` command (execute tests with optional `--suite` filter)
-- **FR-060**: System MUST provide `e2e-toolkit status` command (show running containers, test status, resource usage)
-- **FR-061**: System MUST provide `e2e-toolkit clean` command (remove containers, networks, volumes, images optionally)
-- **FR-062**: System MUST provide `e2e-toolkit dashboard` command (start Dashboard server)
-- **FR-063**: System MUST provide `e2e-toolkit build` command (build Docker image with options)
-- **FR-064**: System MUST provide `e2e-toolkit logs` command (stream container logs, support `--follow` option)
+- **FR-057**: System MUST provide `preflight init` command to generate `e2e.yaml` template
+- **FR-058**: System MUST provide `preflight setup` command (dependency check, build, start, health verification)
+- **FR-059**: System MUST provide `preflight run` command (execute tests with optional `--suite` filter)
+- **FR-060**: System MUST provide `preflight status` command (show running containers, test status, resource usage)
+- **FR-061**: System MUST provide `preflight clean` command (remove containers, networks, volumes, images optionally)
+- **FR-062**: System MUST provide `preflight dashboard` command (start Dashboard server)
+- **FR-063**: System MUST provide `preflight build` command (build Docker image with options)
+- **FR-064**: System MUST provide `preflight logs` command (stream container logs, support `--follow` option)
 - **FR-065**: System MUST support `--help` flag for all commands with usage examples
 - **FR-066**: System MUST support `--ci` flag for CI mode (no interactive prompts, JSON output, proper exit codes)
 - **FR-067**: System MUST support `--reporter` option (json, table, tap formats)
@@ -239,7 +239,7 @@
 ### Measurable Outcomes
 
 - **SC-001**: as-mate 项目的现有 7 个 E2E 测试用例可以完全迁移到 YAML 格式，迁移后的测试覆盖相同的功能点，执行时间不超过原测试的 120%
-- **SC-002**: 新项目（包含 Dockerfile 的服务）可以在 10 分钟内完成接入（从运行 `e2e-toolkit init` 到成功运行第一个测试），配置步骤不超过 5 步
+- **SC-002**: 新项目（包含 Dockerfile 的服务）可以在 10 分钟内完成接入（从运行 `preflight init` 到成功运行第一个测试），配置步骤不超过 5 步
 - **SC-003**: Dashboard 提供与现有 as-mate/e2e Dashboard 同等的功能（镜像构建、容器管理、API 调试、测试套件），所有操作响应时间 < 2 秒（除构建和测试执行）
 - **SC-004**: CLI 命令简洁直观，90% 的常用操作可以通过单条命令完成，命令帮助文档完整（每个命令有 `--help` 和示例）
 - **SC-005**: 文档完整度：README 包含快速开始、配置说明、API 文档；使用手册包含所有功能的使用示例和最佳实践
@@ -247,7 +247,7 @@
 - **SC-007**: Mock 服务框架支持路径参数、条件路由、延迟模拟，Mock 服务启动时间 < 3 秒，请求响应延迟 < 100ms（不含配置的延迟）
 - **SC-008**: Docker 引擎支持镜像构建、容器生命周期管理、健康检查等待，容器启动到健康就绪时间可配置（默认 60 秒），超时错误信息清晰
 - **SC-009**: 多语言测试运行器支持 YAML/Vitest/Pytest/Shell/Exec，所有运行器输出统一的 TestEvent 格式，测试执行失败时退出码正确（非 0）
-- **SC-010**: CI 集成支持：`e2e-toolkit setup --skip-dashboard` 和 `e2e-toolkit run --ci --reporter json` 可以在无交互环境下正常工作，资源清理完整（无残留容器/网络/卷）
+- **SC-010**: CI 集成支持：`preflight setup --skip-dashboard` 和 `preflight run --ci --reporter json` 可以在无交互环境下正常工作，资源清理完整（无残留容器/网络/卷）
 
 ### Non-Functional Requirements
 
@@ -289,7 +289,7 @@
 
 ## Related Documents
 
-- **Project Constitution**: `/Users/kongjie/projects/agent-studio/e2e-toolkit/.specify/memory/constitution.md`
+- **Project Constitution**: `/Users/kongjie/projects/agent-studio/preflight/.specify/memory/constitution.md`
 - **Source Reference**: `/Users/kongjie/projects/agent-studio/as-mate/e2e/` (existing E2E system to be refactored)
 - **Docker Documentation**: https://docs.docker.com/
 - **Fastify Documentation**: https://www.fastify.io/

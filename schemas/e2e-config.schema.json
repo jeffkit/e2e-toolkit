@@ -1,0 +1,666 @@
+{
+  "$ref": "#/definitions/E2EConfig",
+  "definitions": {
+    "E2EConfig": {
+      "type": "object",
+      "properties": {
+        "version": {
+          "type": "string",
+          "default": "1",
+          "description": "Configuration schema version"
+        },
+        "project": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Project name"
+            },
+            "description": {
+              "type": "string",
+              "description": "Project description"
+            },
+            "version": {
+              "type": "string",
+              "description": "Project version"
+            }
+          },
+          "required": [
+            "name"
+          ],
+          "additionalProperties": false,
+          "description": "Project metadata"
+        },
+        "service": {
+          "type": "object",
+          "properties": {
+            "build": {
+              "type": "object",
+              "properties": {
+                "dockerfile": {
+                  "type": "string",
+                  "description": "Path to the Dockerfile (relative to context)"
+                },
+                "context": {
+                  "type": "string",
+                  "default": ".",
+                  "description": "Docker build context directory"
+                },
+                "image": {
+                  "type": "string",
+                  "description": "Docker image name and tag (supports {{variable}} substitution)"
+                },
+                "args": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "Docker build-time arguments (--build-arg)"
+                }
+              },
+              "required": [
+                "dockerfile",
+                "image"
+              ],
+              "additionalProperties": false,
+              "description": "Docker image build configuration"
+            },
+            "container": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Docker container name"
+                },
+                "ports": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Port mappings in \"hostPort:containerPort\" format"
+                },
+                "environment": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "Environment variables passed to the container"
+                },
+                "volumes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "Volume mounts in \"host:container\" format"
+                },
+                "healthcheck": {
+                  "type": "object",
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "description": "HTTP health check endpoint path"
+                    },
+                    "interval": {
+                      "type": "string",
+                      "default": "10s",
+                      "description": "Interval between health checks (e.g. \"10s\")"
+                    },
+                    "timeout": {
+                      "type": "string",
+                      "default": "5s",
+                      "description": "Timeout per health check attempt (e.g. \"5s\")"
+                    },
+                    "retries": {
+                      "type": "number",
+                      "default": 10,
+                      "description": "Number of consecutive failures before marking unhealthy"
+                    },
+                    "startPeriod": {
+                      "type": "string",
+                      "default": "30s",
+                      "description": "Grace period before health checks start (e.g. \"30s\")"
+                    }
+                  },
+                  "required": [
+                    "path"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Container health check configuration"
+                }
+              },
+              "required": [
+                "name",
+                "ports"
+              ],
+              "additionalProperties": false,
+              "description": "Docker container runtime configuration"
+            },
+            "vars": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "Custom variables for template substitution"
+            }
+          },
+          "required": [
+            "build",
+            "container"
+          ],
+          "additionalProperties": false,
+          "description": "Service under test (single service, backward compatible)"
+        },
+        "services": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Unique service identifier"
+              },
+              "build": {
+                "type": "object",
+                "properties": {
+                  "dockerfile": {
+                    "type": "string",
+                    "description": "Path to the Dockerfile (relative to context)"
+                  },
+                  "context": {
+                    "type": "string",
+                    "default": ".",
+                    "description": "Docker build context directory"
+                  },
+                  "image": {
+                    "type": "string",
+                    "description": "Docker image name and tag (supports {{variable}} substitution)"
+                  },
+                  "args": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "description": "Docker build-time arguments (--build-arg)"
+                  }
+                },
+                "required": [
+                  "dockerfile",
+                  "image"
+                ],
+                "additionalProperties": false,
+                "description": "Docker image build configuration"
+              },
+              "container": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Docker container name"
+                  },
+                  "ports": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Port mappings in \"hostPort:containerPort\" format"
+                  },
+                  "environment": {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "description": "Environment variables passed to the container"
+                  },
+                  "volumes": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "Volume mounts in \"host:container\" format"
+                  },
+                  "healthcheck": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string",
+                        "description": "HTTP health check endpoint path"
+                      },
+                      "interval": {
+                        "type": "string",
+                        "default": "10s",
+                        "description": "Interval between health checks (e.g. \"10s\")"
+                      },
+                      "timeout": {
+                        "type": "string",
+                        "default": "5s",
+                        "description": "Timeout per health check attempt (e.g. \"5s\")"
+                      },
+                      "retries": {
+                        "type": "number",
+                        "default": 10,
+                        "description": "Number of consecutive failures before marking unhealthy"
+                      },
+                      "startPeriod": {
+                        "type": "string",
+                        "default": "30s",
+                        "description": "Grace period before health checks start (e.g. \"30s\")"
+                      }
+                    },
+                    "required": [
+                      "path"
+                    ],
+                    "additionalProperties": false,
+                    "description": "Container health check configuration"
+                  }
+                },
+                "required": [
+                  "name",
+                  "ports"
+                ],
+                "additionalProperties": false,
+                "description": "Docker container runtime configuration"
+              },
+              "vars": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "dependsOn": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Services that must be healthy before this one starts"
+              }
+            },
+            "required": [
+              "name",
+              "build",
+              "container"
+            ],
+            "additionalProperties": false,
+            "description": "Service definition for multi-service orchestration"
+          },
+          "description": "Multiple services for multi-service orchestration"
+        },
+        "mocks": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "port": {
+                "type": "number",
+                "description": "Host port the mock server listens on"
+              },
+              "containerPort": {
+                "type": "number",
+                "description": "Container-internal port (for Docker network access)"
+              },
+              "routes": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "method": {
+                      "type": "string",
+                      "description": "HTTP method (GET, POST, PUT, DELETE, etc.)"
+                    },
+                    "path": {
+                      "type": "string",
+                      "description": "Route path pattern (supports Express-style params like :id)"
+                    },
+                    "response": {
+                      "type": "object",
+                      "properties": {
+                        "status": {
+                          "type": "number",
+                          "default": 200,
+                          "description": "HTTP response status code"
+                        },
+                        "headers": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string"
+                          },
+                          "description": "Response headers"
+                        },
+                        "body": {
+                          "description": "Response body (JSON object, string, or template)"
+                        },
+                        "delay": {
+                          "type": "string",
+                          "description": "Simulated response delay (e.g. \"100ms\", \"2s\")"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "description": "Mock response definition"
+                    },
+                    "when": {
+                      "type": "object",
+                      "properties": {
+                        "body": {
+                          "type": "object",
+                          "additionalProperties": {},
+                          "description": "Match request body fields"
+                        },
+                        "headers": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string"
+                          },
+                          "description": "Match request headers"
+                        },
+                        "query": {
+                          "type": "object",
+                          "additionalProperties": {
+                            "type": "string"
+                          },
+                          "description": "Match query parameters"
+                        }
+                      },
+                      "additionalProperties": false,
+                      "description": "Conditional matching rules for request routing"
+                    }
+                  },
+                  "required": [
+                    "method",
+                    "path",
+                    "response"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Mock service route definition"
+                },
+                "description": "Mock route definitions"
+              },
+              "image": {
+                "type": "string",
+                "description": "Pre-built Docker image (alternative to inline routes)"
+              }
+            },
+            "required": [
+              "port"
+            ],
+            "additionalProperties": false,
+            "description": "Mock service configuration"
+          },
+          "description": "Mock service definitions keyed by name"
+        },
+        "tests": {
+          "type": "object",
+          "properties": {
+            "suites": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "description": "Human-readable suite name"
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Unique suite identifier (used for filtering and reporting)"
+                  },
+                  "file": {
+                    "type": "string",
+                    "description": "Path to the test file (relative to e2e.yaml directory)"
+                  },
+                  "runner": {
+                    "type": "string",
+                    "description": "Test runner type: yaml, vitest, pytest, shell, exec, or playwright"
+                  },
+                  "command": {
+                    "type": "string",
+                    "description": "Custom command to execute (for exec runner)"
+                  },
+                  "config": {
+                    "type": "string",
+                    "description": "Runner-specific configuration file path"
+                  },
+                  "retry": {
+                    "type": "object",
+                    "properties": {
+                      "maxAttempts": {
+                        "type": "number",
+                        "minimum": 1,
+                        "maximum": 10,
+                        "description": "Maximum retry attempts including first try"
+                      },
+                      "delay": {
+                        "type": "string",
+                        "description": "Delay between retries, e.g. \"2s\", \"500ms\""
+                      },
+                      "backoff": {
+                        "type": "string",
+                        "enum": [
+                          "linear",
+                          "exponential"
+                        ],
+                        "description": "Backoff strategy"
+                      },
+                      "backoffMultiplier": {
+                        "type": "number",
+                        "default": 2,
+                        "description": "Multiplier for exponential backoff"
+                      }
+                    },
+                    "required": [
+                      "maxAttempts",
+                      "delay"
+                    ],
+                    "additionalProperties": false,
+                    "description": "Suite-level retry policy (overrides global)"
+                  },
+                  "parallel": {
+                    "type": "boolean",
+                    "description": "Enable parallel execution for this suite"
+                  },
+                  "concurrency": {
+                    "type": "number",
+                    "description": "Maximum concurrency for parallel test cases"
+                  }
+                },
+                "required": [
+                  "name",
+                  "id"
+                ],
+                "additionalProperties": false,
+                "description": "Test suite configuration"
+              },
+              "description": "Test suite definitions"
+            },
+            "retry": {
+              "type": "object",
+              "properties": {
+                "maxAttempts": {
+                  "type": "number",
+                  "minimum": 1,
+                  "maximum": 10,
+                  "description": "Maximum retry attempts including first try"
+                },
+                "delay": {
+                  "type": "string",
+                  "description": "Delay between retries, e.g. \"2s\", \"500ms\""
+                },
+                "backoff": {
+                  "type": "string",
+                  "enum": [
+                    "linear",
+                    "exponential"
+                  ],
+                  "description": "Backoff strategy"
+                },
+                "backoffMultiplier": {
+                  "type": "number",
+                  "default": 2,
+                  "description": "Multiplier for exponential backoff"
+                }
+              },
+              "required": [
+                "maxAttempts",
+                "delay"
+              ],
+              "additionalProperties": false,
+              "description": "Global retry policy for all test cases"
+            },
+            "parallel": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean",
+                  "description": "Enable parallel suite execution"
+                },
+                "concurrency": {
+                  "type": "number",
+                  "description": "Max concurrent suites"
+                }
+              },
+              "required": [
+                "enabled"
+              ],
+              "additionalProperties": false,
+              "description": "Global parallel execution configuration"
+            }
+          },
+          "required": [
+            "suites"
+          ],
+          "additionalProperties": false,
+          "description": "Test configuration and suite definitions"
+        },
+        "dashboard": {
+          "type": "object",
+          "properties": {
+            "port": {
+              "type": "number",
+              "default": 9095,
+              "description": "Dashboard API server port"
+            },
+            "uiPort": {
+              "type": "number",
+              "default": 9091,
+              "description": "Dashboard UI dev server port"
+            },
+            "presets": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "group": {
+                    "type": "string",
+                    "description": "Group name for organizing endpoints"
+                  },
+                  "endpoints": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "method": {
+                          "type": "string",
+                          "description": "HTTP method"
+                        },
+                        "path": {
+                          "type": "string",
+                          "description": "API endpoint path"
+                        },
+                        "name": {
+                          "type": "string",
+                          "description": "Display name for the endpoint"
+                        },
+                        "body": {
+                          "description": "Default request body"
+                        }
+                      },
+                      "required": [
+                        "method",
+                        "path",
+                        "name"
+                      ],
+                      "additionalProperties": false,
+                      "description": "Predefined API endpoint for the dashboard explorer"
+                    },
+                    "description": "Endpoints in this group"
+                  }
+                },
+                "required": [
+                  "group",
+                  "endpoints"
+                ],
+                "additionalProperties": false,
+                "description": "Grouped preset API endpoints"
+              },
+              "description": "Predefined API endpoints for the explorer"
+            },
+            "envDefaults": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "Default environment variable values for the env editor"
+            },
+            "defaultDirs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "Default directories to browse inside the container"
+            }
+          },
+          "additionalProperties": false,
+          "description": "Dashboard UI configuration"
+        },
+        "network": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string",
+              "default": "e2e-network",
+              "description": "Docker network name for inter-container communication"
+            }
+          },
+          "additionalProperties": false,
+          "description": "Docker network configuration"
+        },
+        "repos": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "description": "Repository name"
+              },
+              "path": {
+                "type": "string",
+                "description": "Local path (relative to e2e.yaml directory)"
+              },
+              "url": {
+                "type": "string",
+                "description": "Remote repository URL (SSH or HTTPS)"
+              },
+              "branch": {
+                "type": "string",
+                "description": "Default branch name for checkout"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false,
+            "description": "Git repository configuration for branch selection and builds"
+          },
+          "description": "Git repositories for branch selection and builds"
+        }
+      },
+      "required": [
+        "project"
+      ],
+      "additionalProperties": false,
+      "description": "Preflight E2E test configuration"
+    }
+  },
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Preflight E2E Configuration",
+  "description": "Schema for preflight e2e.yaml configuration files. Defines services, mocks, test suites, and infrastructure settings."
+}
