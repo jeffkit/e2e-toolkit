@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "argusai",
-      "source": "./plugins/argusai",
+      "source": "./claude-plugin/argusai-plugin",
       "description": "ArgusAI E2E testing plugin — provides MCP tools and skills for AI agents to build Docker images, orchestrate containers, run YAML-driven tests, and manage mock services.",
       "author": {
         "name": "jeff kit"

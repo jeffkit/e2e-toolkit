@@ -1,21 +1,11 @@
-# ArgusAI Claude Code Plugin Marketplace
+# ArgusAI Claude Code Plugin
 
-本目录是 ArgusAI 的 Claude Code Plugin Marketplace，业务团队安装后即可让 AI 编程助手直接执行 Docker 容器 E2E 测试。
+本目录包含 ArgusAI 的 Claude Code Plugin，业务团队安装后即可让 AI 编程助手直接执行 Docker 容器 E2E 测试。
 
 ## 安装方式
 
-### 方式一：从本地目录安装
-
 ```bash
-claude plugin install --marketplace /path/to/argusai/claude-plugin argusai
-```
-
-### 方式二：从 Git 仓库安装
-
-将 `claude-plugin/` 目录推送到 Git 仓库后：
-
-```bash
-claude plugin install --marketplace github:jeffkit/infra4agent/argusai/claude-plugin argusai
+claude plugin install github:jeffkit/argusai argusai
 ```
 
 ## 安装后你会获得什么
@@ -61,24 +51,24 @@ AI 在检测到以下场景时会自动使用 ArgusAI 技能：
 ## 目录结构
 
 ```
-claude-plugin/
+(repo root)
 ├── .claude-plugin/
-│   └── marketplace.json          # Marketplace 清单
-├── plugins/
-│   └── argusai/                  # ArgusAI Plugin
-│       ├── .claude-plugin/
-│       │   └── plugin.json       # Plugin 清单
-│       ├── .mcp.json             # MCP Server 配置
-│       ├── commands/
-│       │   ├── run-tests.md      # /run-tests 命令
-│       │   └── init-e2e.md       # /init-e2e 命令
-│       └── skills/
-│           └── argusai-e2e/
-│               ├── SKILL.md      # 核心 Skill 定义
-│               └── references/   # 参考文档
-│                   ├── yaml-test-syntax.md
-│                   └── e2e-yaml-config.md
-└── README.md                     # 本文件
+│   └── marketplace.json              # Marketplace 清单（在仓库根目录）
+└── claude-plugin/
+    ├── README.md                     # 本文件
+    └── argusai-plugin/               # ArgusAI Plugin
+        ├── .claude-plugin/
+        │   └── plugin.json           # Plugin 清单
+        ├── .mcp.json                 # MCP Server 配置
+        ├── commands/
+        │   ├── run-tests.md          # /run-tests 命令
+        │   └── init-e2e.md           # /init-e2e 命令
+        └── skills/
+            └── argusai-e2e/
+                ├── SKILL.md          # 核心 Skill 定义
+                └── references/       # 参考文档
+                    ├── yaml-test-syntax.md
+                    └── e2e-yaml-config.md
 ```
 
 ## 使用示例
