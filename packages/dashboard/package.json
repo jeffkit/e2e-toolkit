@@ -1,6 +1,6 @@
 {
   "name": "argusai-dashboard",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "ArgusAI Dashboard — real-time web UI for monitoring AI-driven E2E test pipelines",
   "license": "MIT",
@@ -9,8 +9,17 @@
     "url": "https://github.com/jeffkit/argusai.git",
     "directory": "packages/dashboard"
   },
-  "keywords": ["argusai", "dashboard", "testing", "monitoring", "ai"],
-  "files": ["dist/", "README.md"],
+  "keywords": [
+    "argusai",
+    "dashboard",
+    "testing",
+    "monitoring",
+    "ai"
+  ],
+  "files": [
+    "dist/",
+    "README.md"
+  ],
   "exports": {
     ".": {
       "import": "./dist/server/index.js",

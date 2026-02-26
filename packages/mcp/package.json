@@ -1,6 +1,6 @@
 {
   "name": "argusai-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "ArgusAI MCP server — expose E2E testing tools to AI coding agents via Model Context Protocol",
   "license": "MIT",
@@ -9,7 +9,15 @@
     "url": "https://github.com/jeffkit/argusai.git",
     "directory": "packages/mcp"
   },
-  "keywords": ["argusai", "mcp", "ai", "testing", "model-context-protocol", "cursor", "claude"],
+  "keywords": [
+    "argusai",
+    "mcp",
+    "ai",
+    "testing",
+    "model-context-protocol",
+    "cursor",
+    "claude"
+  ],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -21,7 +29,10 @@
   "bin": {
     "argusai-mcp": "./dist/index.js"
   },
-  "files": ["dist/", "README.md"],
+  "files": [
+    "dist/",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "test": "vitest",

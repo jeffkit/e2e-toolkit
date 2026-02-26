@@ -1,6 +1,6 @@
 {
   "name": "argusai-core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "description": "ArgusAI core engine — Docker orchestration, test runners, and assertion engine for AI-native E2E testing",
   "license": "MIT",
@@ -9,7 +9,15 @@
     "url": "https://github.com/jeffkit/argusai.git",
     "directory": "packages/core"
   },
-  "keywords": ["argusai", "e2e", "testing", "docker", "ai", "mcp", "automation"],
+  "keywords": [
+    "argusai",
+    "e2e",
+    "testing",
+    "docker",
+    "ai",
+    "mcp",
+    "automation"
+  ],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -18,7 +26,10 @@
       "types": "./dist/index.d.ts"
     }
   },
-  "files": ["dist/", "README.md"],
+  "files": [
+    "dist/",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc",
     "generate:schemas": "tsx scripts/generate-schemas.ts",
