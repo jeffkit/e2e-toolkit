@@ -246,6 +246,8 @@ export interface TestStep {
     status?: number | number[];
     headers?: Record<string, unknown>;
     body?: Record<string, unknown>;
+    /** HTTP 响应时间断言（毫秒），支持数值比较操作符 e.g. { lt: 500 } */
+    responseTime?: number | Record<string, number>;
     /** exec 步骤的输出断言 */
     output?: {
       /** 输出包含指定字符串 */

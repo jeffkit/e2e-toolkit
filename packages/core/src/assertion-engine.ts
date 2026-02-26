@@ -23,9 +23,14 @@ const ASSERTION_OPERATORS = new Set([
   'lt',
   'lte',
   'contains',
+  'notContains',
   'matches',
   'startsWith',
+  'endsWith',
   'length',
+  'every',
+  'some',
+  'not',
 ]);
 
 // =====================================================================
@@ -231,8 +236,23 @@ function runOperatorAssertions(
       case 'startsWith':
         results.push(assertStartsWith(actual, expected as string, path));
         break;
+      case 'endsWith':
+        results.push(assertEndsWith(actual, expected as string, path));
+        break;
+      case 'notContains':
+        results.push(assertNotContains(actual, expected, path));
+        break;
       case 'length':
         results.push(...assertLength(actual, expected, path));
+        break;
+      case 'every':
+        results.push(...assertEvery(actual, expected as Record<string, unknown>, path));
+        break;
+      case 'some':
+        results.push(...assertSome(actual, expected as Record<string, unknown>, path));
+        break;
+      case 'not':
+        results.push(...assertNot(actual, expected, path));
         break;
     }
   }
@@ -553,6 +573,234 @@ function assertLength(
   });
 
   return results;
+}
+
+/** String suffix assertion */
+function assertEndsWith(actual: unknown, suffix: string, path: string): AssertionResult {
+  if (typeof actual !== 'string') {
+    return {
+      path,
+      operator: 'endsWith',
+      expected: suffix,
+      actual,
+      passed: false,
+      message: `Expected ${path} to be a string for endsWith, got ${typeof actual}`,
+    };
+  }
+
+  const passed = actual.endsWith(suffix);
+  return {
+    path,
+    operator: 'endsWith',
+    expected: suffix,
+    actual,
+    passed,
+    message: passed
+      ? `${path} ends with "${suffix}"`
+      : `Expected ${path} to end with "${suffix}", got "${actual}"`,
+  };
+}
+
+/** Negated string/array contains assertion */
+function assertNotContains(actual: unknown, expected: unknown, path: string): AssertionResult {
+  let contained = false;
+
+  if (typeof actual === 'string' && typeof expected === 'string') {
+    contained = actual.includes(expected);
+  } else if (Array.isArray(actual)) {
+    contained = actual.some((item) => deepEqual(item, expected));
+  }
+
+  return {
+    path,
+    operator: 'notContains',
+    expected,
+    actual,
+    passed: !contained,
+    message: !contained
+      ? `${path} does not contain ${JSON.stringify(expected)}`
+      : `Expected ${path} not to contain ${JSON.stringify(expected)}`,
+  };
+}
+
+/**
+ * Array `every` assertion — all items must satisfy the given conditions.
+ *
+ * @example
+ * ```yaml
+ * items:
+ *   every:
+ *     email: { exists: true }
+ *     role: { in: [admin, user] }
+ * ```
+ */
+function assertEvery(
+  actual: unknown,
+  conditions: Record<string, unknown>,
+  path: string,
+): AssertionResult[] {
+  if (!Array.isArray(actual)) {
+    return [{
+      path,
+      operator: 'every',
+      expected: 'array',
+      actual: actual === null ? 'null' : typeof actual,
+      passed: false,
+      message: `Expected ${path} to be an array for 'every' assertion, got ${actual === null ? 'null' : typeof actual}`,
+    }];
+  }
+
+  if (actual.length === 0) {
+    return [{
+      path,
+      operator: 'every',
+      expected: conditions,
+      actual: [],
+      passed: true,
+      message: `${path} is empty — 'every' vacuously passes`,
+    }];
+  }
+
+  const failures: AssertionResult[] = [];
+
+  for (let i = 0; i < actual.length; i++) {
+    const item = actual[i];
+    const itemPath = `${path}[${i}]`;
+
+    if (item === null || item === undefined || typeof item !== 'object' || Array.isArray(item)) {
+      const itemResults = evaluateAssertion(item, conditions, itemPath);
+      const itemFailures = itemResults.filter(r => !r.passed);
+      if (itemFailures.length > 0) {
+        failures.push(...itemFailures);
+      }
+    } else {
+      const itemResults = assertBody(item, conditions, itemPath);
+      const itemFailures = itemResults.filter(r => !r.passed);
+      if (itemFailures.length > 0) {
+        failures.push(...itemFailures);
+      }
+    }
+  }
+
+  if (failures.length === 0) {
+    return [{
+      path,
+      operator: 'every',
+      expected: conditions,
+      actual: `all ${actual.length} items passed`,
+      passed: true,
+      message: `${path}: all ${actual.length} items satisfy 'every' conditions`,
+    }];
+  }
+
+  return [{
+    path,
+    operator: 'every',
+    expected: conditions,
+    actual: `${failures.length} assertion(s) failed`,
+    passed: false,
+    message: `${path}: 'every' failed — ${failures.map(f => f.message).join('; ')}`,
+  }];
+}
+
+/**
+ * Array `some` assertion — at least one item must satisfy all conditions.
+ *
+ * @example
+ * ```yaml
+ * items:
+ *   some:
+ *     role: "admin"
+ * ```
+ */
+function assertSome(
+  actual: unknown,
+  conditions: Record<string, unknown>,
+  path: string,
+): AssertionResult[] {
+  if (!Array.isArray(actual)) {
+    return [{
+      path,
+      operator: 'some',
+      expected: 'array',
+      actual: actual === null ? 'null' : typeof actual,
+      passed: false,
+      message: `Expected ${path} to be an array for 'some' assertion, got ${actual === null ? 'null' : typeof actual}`,
+    }];
+  }
+
+  if (actual.length === 0) {
+    return [{
+      path,
+      operator: 'some',
+      expected: conditions,
+      actual: [],
+      passed: false,
+      message: `${path} is empty — 'some' fails (no items to match)`,
+    }];
+  }
+
+  for (let i = 0; i < actual.length; i++) {
+    const item = actual[i];
+    const itemPath = `${path}[${i}]`;
+
+    let itemResults: AssertionResult[];
+    if (item === null || item === undefined || typeof item !== 'object' || Array.isArray(item)) {
+      itemResults = evaluateAssertion(item, conditions, itemPath);
+    } else {
+      itemResults = assertBody(item, conditions, itemPath);
+    }
+
+    if (itemResults.every(r => r.passed)) {
+      return [{
+        path,
+        operator: 'some',
+        expected: conditions,
+        actual: `item [${i}] matched`,
+        passed: true,
+        message: `${path}: item [${i}] satisfies 'some' conditions`,
+      }];
+    }
+  }
+
+  return [{
+    path,
+    operator: 'some',
+    expected: conditions,
+    actual: `none of ${actual.length} items matched`,
+    passed: false,
+    message: `${path}: 'some' failed — none of the ${actual.length} items satisfy all conditions`,
+  }];
+}
+
+/**
+ * Negation wrapper — inverts assertion results.
+ *
+ * @example
+ * ```yaml
+ * status:
+ *   not:
+ *     in: [500, 502, 503]
+ *
+ * name:
+ *   not: "forbidden_value"
+ * ```
+ */
+function assertNot(
+  actual: unknown,
+  expected: unknown,
+  path: string,
+): AssertionResult[] {
+  const innerResults = evaluateAssertion(actual, expected, path);
+
+  return innerResults.map(r => ({
+    ...r,
+    operator: `not(${r.operator})`,
+    passed: !r.passed,
+    message: !r.passed
+      ? r.message
+      : `NOT: expected ${path} to NOT satisfy: ${r.message}`,
+  }));
 }
 
 // =====================================================================

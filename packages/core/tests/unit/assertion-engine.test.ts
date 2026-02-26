@@ -543,6 +543,246 @@ describe('assertion-engine', () => {
   });
 
   // ===================================================================
+  // assertBody — EndsWith
+  // ===================================================================
+
+  describe('assertBody — endsWith', () => {
+    it('should pass endsWith check', () => {
+      const results = assertBody(
+        { file: 'report.pdf' },
+        { file: { endsWith: '.pdf' } },
+      );
+      expect(results).toHaveLength(1);
+      expect(results[0]!.passed).toBe(true);
+      expect(results[0]!.operator).toBe('endsWith');
+    });
+
+    it('should fail endsWith check', () => {
+      const results = assertBody(
+        { file: 'report.doc' },
+        { file: { endsWith: '.pdf' } },
+      );
+      expect(results).toHaveLength(1);
+      expect(results[0]!.passed).toBe(false);
+    });
+
+    it('should fail on non-string value', () => {
+      const results = assertBody(
+        { file: 123 },
+        { file: { endsWith: '3' } },
+      );
+      expect(results).toHaveLength(1);
+      expect(results[0]!.passed).toBe(false);
+    });
+  });
+
+  // ===================================================================
+  // assertBody — NotContains
+  // ===================================================================
+
+  describe('assertBody — notContains', () => {
+    it('should pass when string does not contain', () => {
+      const results = assertBody(
+        { msg: 'All good' },
+        { msg: { notContains: 'error' } },
+      );
+      expect(results).toHaveLength(1);
+      expect(results[0]!.passed).toBe(true);
+    });
+
+    it('should fail when string contains', () => {
+      const results = assertBody(
+        { msg: 'An error occurred' },
+        { msg: { notContains: 'error' } },
+      );
+      expect(results).toHaveLength(1);
+      expect(results[0]!.passed).toBe(false);
+    });
+
+    it('should pass when array does not contain element', () => {
+      const results = assertBody(
+        { tags: ['a', 'b'] },
+        { tags: { notContains: 'x' } },
+      );
+      expect(results).toHaveLength(1);
+      expect(results[0]!.passed).toBe(true);
+    });
+
+    it('should fail when array contains element', () => {
+      const results = assertBody(
+        { tags: ['a', 'b', 'x'] },
+        { tags: { notContains: 'x' } },
+      );
+      expect(results).toHaveLength(1);
+      expect(results[0]!.passed).toBe(false);
+    });
+  });
+
+  // ===================================================================
+  // assertBody — Every (array traversal)
+  // ===================================================================
+
+  describe('assertBody — every', () => {
+    it('should pass when all items satisfy conditions', () => {
+      const results = assertBody(
+        { users: [
+          { name: 'Alice', email: 'a@x.com' },
+          { name: 'Bob', email: 'b@x.com' },
+        ]},
+        { users: { every: { email: { exists: true }, name: { type: 'string' } } } },
+      );
+      expect(results).toHaveLength(1);
+      expect(results[0]!.passed).toBe(true);
+      expect(results[0]!.operator).toBe('every');
+    });
+
+    it('should fail when some items violate conditions', () => {
+      const results = assertBody(
+        { users: [
+          { name: 'Alice', email: 'a@x.com' },
+          { name: 'Bob' },
+        ]},
+        { users: { every: { email: { exists: true } } } },
+      );
+      expect(results).toHaveLength(1);
+      expect(results[0]!.passed).toBe(false);
+      expect(results[0]!.message).toContain('every');
+    });
+
+    it('should vacuously pass on empty array', () => {
+      const results = assertBody(
+        { items: [] },
+        { items: { every: { id: { exists: true } } } },
+      );
+      expect(results).toHaveLength(1);
+      expect(results[0]!.passed).toBe(true);
+    });
+
+    it('should fail on non-array value', () => {
+      const results = assertBody(
+        { items: 'not-array' },
+        { items: { every: { id: { exists: true } } } },
+      );
+      expect(results).toHaveLength(1);
+      expect(results[0]!.passed).toBe(false);
+    });
+
+    it('should support nested operator checks within every', () => {
+      const results = assertBody(
+        { scores: [
+          { value: 85 },
+          { value: 92 },
+          { value: 78 },
+        ]},
+        { scores: { every: { value: { gte: 60, lte: 100 } } } },
+      );
+      expect(results).toHaveLength(1);
+      expect(results[0]!.passed).toBe(true);
+    });
+  });
+
+  // ===================================================================
+  // assertBody — Some (array traversal)
+  // ===================================================================
+
+  describe('assertBody — some', () => {
+    it('should pass when at least one item matches', () => {
+      const results = assertBody(
+        { users: [
+          { role: 'user' },
+          { role: 'admin' },
+        ]},
+        { users: { some: { role: 'admin' } } },
+      );
+      expect(results).toHaveLength(1);
+      expect(results[0]!.passed).toBe(true);
+      expect(results[0]!.operator).toBe('some');
+    });
+
+    it('should fail when no items match', () => {
+      const results = assertBody(
+        { users: [
+          { role: 'user' },
+          { role: 'guest' },
+        ]},
+        { users: { some: { role: 'admin' } } },
+      );
+      expect(results).toHaveLength(1);
+      expect(results[0]!.passed).toBe(false);
+    });
+
+    it('should fail on empty array', () => {
+      const results = assertBody(
+        { items: [] },
+        { items: { some: { id: 1 } } },
+      );
+      expect(results).toHaveLength(1);
+      expect(results[0]!.passed).toBe(false);
+    });
+
+    it('should fail on non-array value', () => {
+      const results = assertBody(
+        { items: 'not-array' },
+        { items: { some: { id: 1 } } },
+      );
+      expect(results).toHaveLength(1);
+      expect(results[0]!.passed).toBe(false);
+    });
+
+    it('should support operator-based conditions', () => {
+      const results = assertBody(
+        { scores: [10, 20, 95, 30] },
+        { scores: { some: { gt: 90 } } },
+      );
+      expect(results).toHaveLength(1);
+      expect(results[0]!.passed).toBe(true);
+    });
+  });
+
+  // ===================================================================
+  // assertBody — Not (negation wrapper)
+  // ===================================================================
+
+  describe('assertBody — not', () => {
+    it('should negate exact match', () => {
+      const results = assertBody(
+        { status: 'active' },
+        { status: { not: 'error' } },
+      );
+      expect(results).toHaveLength(1);
+      expect(results[0]!.passed).toBe(true);
+      expect(results[0]!.operator).toContain('not');
+    });
+
+    it('should fail negation when inner passes', () => {
+      const results = assertBody(
+        { status: 'error' },
+        { status: { not: 'error' } },
+      );
+      expect(results).toHaveLength(1);
+      expect(results[0]!.passed).toBe(false);
+    });
+
+    it('should negate operator-based assertions', () => {
+      const results = assertBody(
+        { code: 200 },
+        { code: { not: { in: [500, 502, 503] } } },
+      );
+      expect(results).toHaveLength(1);
+      expect(results[0]!.passed).toBe(true);
+    });
+
+    it('should fail negated operator when inner matches', () => {
+      const results = assertBody(
+        { code: 500 },
+        { code: { not: { in: [500, 502, 503] } } },
+      );
+      expect(results).toHaveLength(1);
+      expect(results[0]!.passed).toBe(false);
+    });
+  });
+
+  // ===================================================================
   // assertBody — Combined Operators
   // ===================================================================
 

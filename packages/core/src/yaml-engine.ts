@@ -433,8 +433,10 @@ async function executeStep(
       fetchOptions.body = JSON.stringify(resolvedStep.request.body);
     }
 
-    // Send the request
+    // Send the request and measure response time
+    const reqStart = Date.now();
     const response = await fetch(url, fetchOptions);
+    const responseTimeMs = Date.now() - reqStart;
 
     // Parse response body
     const contentType = response.headers.get('content-type') ?? '';
@@ -449,6 +451,31 @@ async function executeStep(
     const errors: string[] = [];
 
     if (resolvedStep.expect) {
+      // Assert response time
+      if (resolvedStep.expect.responseTime !== undefined) {
+        const rtExpect = resolvedStep.expect.responseTime;
+        if (typeof rtExpect === 'number') {
+          if (responseTimeMs > rtExpect) {
+            errors.push(`Response time ${responseTimeMs}ms exceeded limit ${rtExpect}ms`);
+          }
+        } else if (typeof rtExpect === 'object' && rtExpect !== null) {
+          const rtOps = rtExpect as Record<string, number>;
+          for (const [op, value] of Object.entries(rtOps)) {
+            let pass = false;
+            let symbol = op;
+            switch (op) {
+              case 'lt': pass = responseTimeMs < value; symbol = '<'; break;
+              case 'lte': pass = responseTimeMs <= value; symbol = '<='; break;
+              case 'gt': pass = responseTimeMs > value; symbol = '>'; break;
+              case 'gte': pass = responseTimeMs >= value; symbol = '>='; break;
+            }
+            if (!pass) {
+              errors.push(`Response time ${responseTimeMs}ms: expected ${symbol} ${value}ms`);
+            }
+          }
+        }
+      }
+
       // Assert status
       if (resolvedStep.expect.status !== undefined) {
         const statusResult = assertStatus(response.status, resolvedStep.expect.status);
