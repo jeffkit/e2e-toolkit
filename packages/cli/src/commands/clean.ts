@@ -43,6 +43,11 @@ export function registerClean(program: Command): void {
 
       console.log(`\n${BOLD}Cleaning up resources...${RESET}\n`);
 
+      if (!config.service) {
+        console.error(`${RED}No service configured in e2e.yaml${RESET}`);
+        process.exit(1);
+      }
+
       // 1. Stop container
       try {
         await stopContainer(config.service.container.name);

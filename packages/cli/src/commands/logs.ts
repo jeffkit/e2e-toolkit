@@ -36,6 +36,11 @@ export function registerLogs(program: Command): void {
       if (!containerName) {
         try {
           const config = await loadConfig(configPath);
+          if (!config.service) {
+            console.error(`${RED}No service configured in e2e.yaml${RESET}`);
+            console.error(`${GRAY}提示: 使用 --container <name> 直接指定容器名${RESET}`);
+            process.exit(1);
+          }
           containerName = config.service.container.name;
         } catch (err) {
           console.error(`${RED}Failed to load config: ${(err as Error).message}${RESET}`);
@@ -47,28 +52,20 @@ export function registerLogs(program: Command): void {
       console.log(`${BOLD}Container logs: ${containerName}${RESET}\n`);
 
       if (opts.follow) {
-        // Stream logs in real-time
+        // Stream logs in real-time via AsyncGenerator
         try {
-          const cleanup = streamContainerLogs(containerName, (line, stream) => {
-            if (stream === 'stderr') {
-              process.stderr.write(`${RED}${line}${RESET}\n`);
-            } else {
-              process.stdout.write(`${line}\n`);
+          process.on('SIGINT', () => process.exit(0));
+          process.on('SIGTERM', () => process.exit(0));
+
+          for await (const event of streamContainerLogs(containerName)) {
+            if (event.type === 'container_log') {
+              if (event.stream === 'stderr') {
+                process.stderr.write(`${RED}${event.line}${RESET}\n`);
+              } else {
+                process.stdout.write(`${event.line}\n`);
+              }
             }
-          });
-
-          // Handle graceful shutdown
-          const handleExit = () => {
-            cleanup();
-            process.exit(0);
-          };
-          process.on('SIGINT', handleExit);
-          process.on('SIGTERM', handleExit);
-
-          // Keep alive — the streamContainerLogs callback handles output
-          await new Promise(() => {
-            // Never resolves — keep alive until signal
-          });
+          }
         } catch (err) {
           console.error(`${RED}Failed to stream logs: ${(err as Error).message}${RESET}`);
           process.exit(1);

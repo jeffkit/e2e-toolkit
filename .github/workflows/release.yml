@@ -75,41 +75,45 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Publish argusai-core
+      - name: Publish packages
         if: steps.check.outputs.has_changesets == 'false'
-        working-directory: packages/core
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          LOCAL_VER=$(node -p "require('./package.json').version")
-          NPM_VER=$(npm view argusai-core version 2>/dev/null || echo "0.0.0")
-          if [ "$LOCAL_VER" != "$NPM_VER" ]; then
-            echo "Publishing argusai-core@$LOCAL_VER (npm has $NPM_VER)"
-            npm publish --provenance --access public
-          else
-            echo "argusai-core@$LOCAL_VER already published, skipping"
-          fi
+          PACKAGES=("core:argusai-core" "mcp:argusai-mcp" "cli:argusai" "dashboard:argusai-dashboard")
+          PUBLISHED=()
 
-      - name: Publish argusai-mcp
-        if: steps.check.outputs.has_changesets == 'false'
-        working-directory: packages/mcp
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          LOCAL_VER=$(node -p "require('./package.json').version")
-          NPM_VER=$(npm view argusai-mcp version 2>/dev/null || echo "0.0.0")
-          if [ "$LOCAL_VER" != "$NPM_VER" ]; then
-            echo "Publishing argusai-mcp@$LOCAL_VER (npm has $NPM_VER)"
-            npm publish --provenance --access public
+          for entry in "${PACKAGES[@]}"; do
+            DIR="${entry%%:*}"
+            NAME="${entry##*:}"
+            LOCAL_VER=$(node -p "require('./packages/$DIR/package.json').version")
+            NPM_VER=$(npm view "$NAME" version 2>/dev/null || echo "0.0.0")
+
+            if [ "$LOCAL_VER" != "$NPM_VER" ]; then
+              echo "📦 Publishing $NAME@$LOCAL_VER (npm has $NPM_VER)"
+              cd "packages/$DIR"
+              npm publish --provenance --access public
+              cd ../..
+              PUBLISHED+=("$NAME@$LOCAL_VER")
+            else
+              echo "✅ $NAME@$LOCAL_VER already published, skipping"
+            fi
+          done
+
+          if [ ${#PUBLISHED[@]} -eq 0 ]; then
+            echo "No packages to publish"
           else
-            echo "argusai-mcp@$LOCAL_VER already published, skipping"
+            echo "Published: ${PUBLISHED[*]}"
           fi
 
       - name: Create git tags
         if: steps.check.outputs.has_changesets == 'false'
         run: |
-          CORE_VER=$(node -p "require('./packages/core/package.json').version")
-          MCP_VER=$(node -p "require('./packages/mcp/package.json').version")
-          git tag -f "argusai-core@$CORE_VER" || true
-          git tag -f "argusai-mcp@$MCP_VER" || true
-          git push --tags || true
+          PACKAGES=("core:argusai-core" "mcp:argusai-mcp" "cli:argusai" "dashboard:argusai-dashboard")
+          for entry in "${PACKAGES[@]}"; do
+            DIR="${entry%%:*}"
+            NAME="${entry##*:}"
+            VER=$(node -p "require('./packages/$DIR/package.json').version")
+            git tag -f "$NAME@$VER" 2>/dev/null || true
+          done
+          git push --tags 2>/dev/null || true

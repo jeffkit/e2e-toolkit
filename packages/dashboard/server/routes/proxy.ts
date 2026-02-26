@@ -11,8 +11,8 @@ import { getAppState } from '../app-state.js';
 export const proxyRoutes: FastifyPluginAsync = async (app) => {
   function getContainerUrl(): string {
     const config = getAppState().config;
-    if (config?.service.vars?.base_url) return config.service.vars.base_url;
-    const firstPort = config?.service.container.ports?.[0];
+    if (config?.service?.vars?.base_url) return config.service.vars.base_url;
+    const firstPort = config?.service?.container.ports?.[0];
     if (firstPort) {
       const hostPort = firstPort.split(':')[0];
       return `http://localhost:${hostPort}`;

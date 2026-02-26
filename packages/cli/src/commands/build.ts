@@ -25,7 +25,6 @@ export function registerBuild(program: Command): void {
       const {
         loadConfig,
         buildImageStreaming,
-        buildBuildArgs,
       } = await import('argusai-core');
 
       const configPath = program.opts().config as string | undefined;
@@ -39,6 +38,11 @@ export function registerBuild(program: Command): void {
         process.exit(1);
       }
 
+      if (!config.service) {
+        console.error(`${RED}No service configured in e2e.yaml${RESET}`);
+        process.exit(1);
+      }
+
       const { build } = config.service;
       console.log(`\n${BOLD}Building image: ${build.image}${RESET}\n`);
       console.log(`  Dockerfile: ${GRAY}${build.dockerfile}${RESET}`);
@@ -49,15 +53,13 @@ export function registerBuild(program: Command): void {
       console.log('');
 
       try {
-        const args = buildBuildArgs({
-          tag: build.image,
+        for await (const event of buildImageStreaming({
+          imageName: build.image,
           dockerfile: build.dockerfile,
           context: build.context,
           buildArgs: build.args,
           noCache: opts.cache === false,
-        });
-
-        for await (const event of buildImageStreaming(args)) {
+        })) {
           switch (event.type) {
             case 'build_start':
               console.log(`${GRAY}[build]${RESET} Starting build...`);

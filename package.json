@@ -16,8 +16,8 @@
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release": "pnpm release:build && pnpm release:test && changeset publish",
-    "release:build": "pnpm --filter argusai-core build && pnpm --filter argusai-mcp build",
-    "release:test": "pnpm --filter argusai-core test:run && pnpm --filter argusai-mcp test:run",
+    "release:build": "pnpm -r build",
+    "release:test": "pnpm -r --filter 'argusai*' test:run",
     "release:dry": "pnpm release:build && changeset publish --dry-run",
     "publish:changed": "node scripts/publish-changed.mjs"
   },

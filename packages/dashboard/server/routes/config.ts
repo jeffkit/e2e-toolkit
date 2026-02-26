@@ -22,7 +22,7 @@ export const configRoutes: FastifyPluginAsync = async (app) => {
 
     // Mask sensitive values in environment
     const maskedEnv: Record<string, string> = {};
-    const env = e2eConfig.service.container.environment ?? {};
+    const env = e2eConfig.service?.container.environment ?? {};
     for (const [key, value] of Object.entries(env)) {
       if (
         key.toLowerCase().includes('secret') ||
@@ -38,14 +38,14 @@ export const configRoutes: FastifyPluginAsync = async (app) => {
 
     return {
       project: e2eConfig.project,
-      service: {
+      service: e2eConfig.service ? {
         build: e2eConfig.service.build,
         container: {
           ...e2eConfig.service.container,
           environment: maskedEnv,
         },
         vars: e2eConfig.service.vars,
-      },
+      } : undefined,
       mocks: e2eConfig.mocks ? Object.keys(e2eConfig.mocks) : [],
       tests: e2eConfig.tests?.suites.map(s => ({ id: s.id, name: s.name })),
       dashboard: e2eConfig.dashboard,

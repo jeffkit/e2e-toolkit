@@ -49,8 +49,6 @@ export function registerSetup(program: Command): void {
         ensureNetwork,
         waitForHealthy,
         createMockServer,
-        buildBuildArgs,
-        buildRunArgs,
       } = await import('argusai-core');
 
       const configPath = program.opts().config as string | undefined;
@@ -85,17 +83,25 @@ export function registerSetup(program: Command): void {
         process.exit(1);
       }
 
+      if (!config.service) {
+        console.error(`  ${RED}✗${RESET} No service configured in e2e.yaml`);
+        process.exit(1);
+      }
+
       // 3. Build image
       if (!opts.skipBuild) {
         log(`${GRAY}[3/6]${RESET}`, 'Building image...');
         try {
-          const args = buildBuildArgs({
-            tag: config.service.build.image,
+          for await (const event of buildImage({
+            imageName: config.service.build.image,
             dockerfile: config.service.build.dockerfile,
             context: config.service.build.context,
             buildArgs: config.service.build.args,
-          });
-          await buildImage(args);
+          })) {
+            if (event.type === 'build_end' && !event.success) {
+              throw new Error(event.error ?? 'Build failed');
+            }
+          }
           log(`${GREEN}✓${RESET}`, `Image built: ${config.service.build.image}`);
         } catch (err) {
           console.error(`  ${RED}✗${RESET} Build failed: ${(err as Error).message}`);
@@ -129,7 +135,7 @@ export function registerSetup(program: Command): void {
         const networkName = config.network?.name ?? 'e2e-network';
         await ensureNetwork(networkName);
 
-        const runArgs = buildRunArgs({
+        await startContainer({
           name: config.service.container.name,
           image: config.service.build.image,
           ports: config.service.container.ports,
@@ -137,7 +143,6 @@ export function registerSetup(program: Command): void {
           volumes: config.service.container.volumes,
           network: networkName,
         });
-        await startContainer(runArgs);
         log(`${GREEN}✓${RESET}`, `Container "${config.service.container.name}" started`);
       } catch (err) {
         console.error(`  ${RED}✗${RESET} Container start failed: ${(err as Error).message}`);
@@ -148,11 +153,12 @@ export function registerSetup(program: Command): void {
       log(`${GRAY}[6/6]${RESET}`, 'Waiting for healthy...');
       if (config.service.container.healthcheck) {
         try {
-          await waitForHealthy(config.service.container.name, {
-            timeout: 120_000,
-            interval: 2_000,
-          });
-          log(`${GREEN}✓${RESET}`, 'Service is healthy');
+          const healthy = await waitForHealthy(config.service.container.name, 120_000);
+          if (healthy) {
+            log(`${GREEN}✓${RESET}`, 'Service is healthy');
+          } else {
+            throw new Error('Timed out waiting for healthy status');
+          }
         } catch (err) {
           console.error(`  ${RED}✗${RESET} Health check failed: ${(err as Error).message}`);
           process.exit(1);

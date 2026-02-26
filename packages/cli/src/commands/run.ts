@@ -88,9 +88,11 @@ export function registerRun(program: Command): void {
         }
 
         const target = suite.command ?? suite.file ?? '';
+        const baseUrl = config.service?.vars?.base_url
+          ?? `http://localhost:${config.service?.container.ports[0]?.split(':')[0] ?? '8080'}`;
         const env: Record<string, string> = {
-          BASE_URL: config.service.vars?.base_url ?? `http://localhost:${config.service.container.ports[0]?.split(':')[0] ?? '8080'}`,
-          ...(config.service.container.environment ?? {}),
+          BASE_URL: baseUrl,
+          ...(config.service?.container.environment ?? {}),
         };
 
         const events = runner.run({

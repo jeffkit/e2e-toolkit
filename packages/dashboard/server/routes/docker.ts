@@ -250,9 +250,9 @@ function broadcast(event: string, data: unknown) {
 export const dockerRoutes: FastifyPluginAsync = async (_app) => {
   // All config is read per-request via getters to support dynamic project switching
   const getConfig = (): E2EConfig | null => getAppState().config;
-  const getContainerName = () => getConfig()?.service.container.name ?? 'e2e-service';
+  const getContainerName = () => getConfig()?.service?.container.name ?? 'e2e-service';
   const getNetworkName = () => getConfig()?.network?.name ?? 'e2e-network';
-  const getDefaultImageName = () => getConfig()?.service.build.image ?? 'e2e-service:latest';
+  const getDefaultImageName = () => getConfig()?.service?.build.image ?? 'e2e-service:latest';
   const getConfigDir = () => getAppState().configDir;
   const getEventBus = () => getAppState().eventBus;
 
@@ -417,8 +417,8 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
     }
 
     // Step 2: Docker build
-    const dockerfile = config?.service.build.dockerfile ?? 'Dockerfile';
-    const context = config?.service.build.context ?? '.';
+    const dockerfile = config?.service?.build.dockerfile ?? 'Dockerfile';
+    const context = config?.service?.build.context ?? '.';
     // Resolve paths using workspace manager (handles remote vs local repos)
     const { resolvedDockerfile, resolvedContext } = resolveBuildPaths(
       repos, projectName, configDir, dockerfile, context,
@@ -427,7 +427,7 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
     const args = ['build', '-f', resolvedDockerfile, '-t', imageName];
     if (noCache) args.push('--no-cache');
     // Add build args from config
-    if (config?.service.build.args) {
+    if (config?.service?.build.args) {
       for (const [key, value] of Object.entries(config.service.build.args)) {
         args.push('--build-arg', `${key}=${value}`);
       }
@@ -553,14 +553,14 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
         if (!body?.skipBuild) {
           updateStage('build', { status: 'running', startTime: Date.now() });
           const buildResult = await new Promise<boolean>((resolve) => {
-            const dockerfile = config?.service.build.dockerfile ?? 'Dockerfile';
-            const context = config?.service.build.context ?? '.';
+            const dockerfile = config?.service?.build.dockerfile ?? 'Dockerfile';
+            const context = config?.service?.build.context ?? '.';
             const { resolvedDockerfile, resolvedContext } = resolveBuildPaths(
               repos, projectName, configDir, dockerfile, context,
             );
             const args = ['build', '-f', resolvedDockerfile, '-t', imageName];
             if (body?.noCache) args.push('--no-cache');
-            if (config?.service.build.args) {
+            if (config?.service?.build.args) {
               for (const [key, value] of Object.entries(config.service.build.args)) {
                 args.push('--build-arg', `${key}=${value}`);
               }
@@ -605,13 +605,13 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
 
         // Start container
         const dockerArgs = ['run', '-d', '--name', containerName, '--network', networkName];
-        const ports = config?.service.container.ports ?? [];
+        const ports = config?.service?.container.ports ?? [];
         for (const mapping of ports) dockerArgs.push('-p', mapping);
-        const configEnv = config?.service.container.environment ?? {};
+        const configEnv = config?.service?.container.environment ?? {};
         for (const [key, value] of Object.entries(configEnv)) {
           if (value !== undefined && value !== '') dockerArgs.push('-e', `${key}=${value}`);
         }
-        if (config?.service.container.volumes) {
+        if (config?.service?.container.volumes) {
           for (const vol of config.service.container.volumes) dockerArgs.push('-v', vol);
         }
         dockerArgs.push(imageName);
@@ -736,7 +736,7 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
 
       // Port conflict check
       const portConflicts: string[] = [];
-      const ports = config?.service.container.ports ?? [];
+      const ports = config?.service?.container.ports ?? [];
       for (const mapping of ports) {
         const hostPort = mapping.split(':')[0];
         const user = getPortUser(hostPort);
@@ -801,7 +801,7 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
       }
 
       // Environment variables: config < envOverrides
-      const configEnv = config?.service.container.environment ?? {};
+      const configEnv = config?.service?.container.environment ?? {};
       const finalEnv: Record<string, string> = { ...configEnv, ...envOverrides };
       for (const [key, value] of Object.entries(finalEnv)) {
         if (value !== undefined && value !== '') {
@@ -810,14 +810,14 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
       }
 
       // Volumes
-      if (config?.service.container.volumes) {
+      if (config?.service?.container.volumes) {
         for (const vol of config.service.container.volumes) {
           dockerArgs.push('-v', vol);
         }
       }
 
       // Health check
-      if (config?.service.container.healthcheck) {
+      if (config?.service?.container.healthcheck) {
         const hc = config.service.container.healthcheck;
         // Build health check port from first port mapping
         const healthPort = ports[0]?.split(':')[1] ?? '3000';

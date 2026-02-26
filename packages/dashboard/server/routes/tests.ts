@@ -91,7 +91,7 @@ export const testRoutes: FastifyPluginAsync = async (app) => {
     const suites = getSuites();
     const body = request.body as { suite?: string; containerUrl?: string; command?: string } | undefined;
     const suiteId = body?.suite || 'all';
-    const containerUrl = body?.containerUrl || config?.service.vars?.base_url || 'http://localhost:3000';
+    const containerUrl = body?.containerUrl || config?.service?.vars?.base_url || 'http://localhost:3000';
 
     if (currentTest?.status === 'running') {
       return { success: false, error: 'A test is already running' };

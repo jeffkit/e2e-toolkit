@@ -63,6 +63,11 @@ export function registerStatus(program: Command): void {
 
       console.log(`\n${BOLD}Environment Status — ${config.project.name}${RESET}\n`);
 
+      if (!config.service) {
+        console.error(`${RED}No service configured in e2e.yaml${RESET}`);
+        process.exit(1);
+      }
+
       // ── Container status ────────────────────────────────────────────
       console.log(`${BOLD}Container:${RESET}`);
       try {
