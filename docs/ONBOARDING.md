@@ -326,11 +326,28 @@ jobs:
 
 ---
 
-## 五、MCP Server 接入（AI 编程助手集成）
+## 五、AI 编程助手集成
 
-如果你的团队使用 Cursor 或其他支持 MCP 的 AI 编程工具，可以配置 ArgusAI MCP Server，让 AI 助手直接执行 E2E 测试。
+如果你的团队使用 AI 编程工具，可以让 AI 助手直接执行 E2E 测试。
 
-### 配置方法
+### 方式一：Claude Code Plugin（推荐）
+
+两行命令安装，AI 自动获得 MCP 工具 + Skill + 斜杠命令：
+
+```bash
+# 注册 marketplace（只需一次）
+claude plugin marketplace add jeffkit/argusai-marketplace
+
+# 安装 plugin
+claude plugin install argusai
+```
+
+安装后 AI 自动获得：
+- 9 个 MCP 工具（构建、启动、测试、日志等全流程）
+- `/run-tests` 和 `/init-e2e` 斜杠命令
+- 自动触发的 Skill（检测到 e2e.yaml 或用户说"跑测试"时激活）
+
+### 方式二：手动配置 MCP Server（Cursor 等）
 
 在项目根目录的 `.cursor/mcp.json`（或 Cursor 全局 MCP 配置）中添加：
 
@@ -338,10 +355,8 @@ jobs:
 {
   "mcpServers": {
     "argusai": {
-      "command": "node",
-      "args": [
-        "/absolute/path/to/argusai/packages/mcp/dist/index.js"
-      ]
+      "command": "npx",
+      "args": ["argusai-mcp"]
     }
   }
 }
