@@ -12,13 +12,19 @@
     "test:run": "pnpm -r --filter 'argusai*' test:run",
     "test:coverage": "pnpm -r --filter 'argusai*' test:run -- --coverage",
     "lint": "eslint packages/",
-    "type-check": "tsc -b"
+    "type-check": "tsc -b",
+    "changeset": "changeset",
+    "version-packages": "changeset version",
+    "release": "pnpm build && pnpm test:run && changeset publish",
+    "release:dry": "pnpm build && changeset publish --dry-run",
+    "publish:changed": "node scripts/publish-changed.mjs"
   },
   "engines": {
     "node": ">=20.0.0"
   },
   "packageManager": "pnpm@10.0.0",
   "devDependencies": {
+    "@changesets/cli": "^2.29.8",
     "@types/js-yaml": "^4.0.0"
   }
 }

@@ -6,7 +6,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jeffkit/preflight.git",
+    "url": "https://github.com/jeffkit/argusai.git",
     "directory": "packages/core"
   },
   "keywords": ["argusai", "e2e", "testing", "docker", "ai", "mcp", "automation"],
