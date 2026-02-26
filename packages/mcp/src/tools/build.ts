@@ -1,6 +1,6 @@
 /**
  * @module tools/build
- * preflight_build — Build Docker images for project services.
+ * argus_build — Build Docker images for project services.
  */
 
 import {
@@ -9,8 +9,9 @@ import {
   type ServiceConfig,
   type ServiceDefinition,
   type BuildEvent,
-} from '@preflight/core';
+} from 'argusai-core';
 import { SessionManager, SessionError } from '../session.js';
+import type { PlatformServices } from '../server.js';
 
 export interface BuildResult {
   services: Array<{
@@ -51,7 +52,7 @@ function getServicesToBuild(config: E2EConfig, serviceFilter?: string): ServiceB
 }
 
 /**
- * Handle the preflight_build MCP tool call.
+ * Handle the argus_build MCP tool call.
  * Builds Docker images for one or all services in the project.
  *
  * @param params - Tool input with projectPath, optional noCache and service filter
@@ -62,14 +63,19 @@ function getServicesToBuild(config: E2EConfig, serviceFilter?: string): ServiceB
 export async function handleBuild(
   params: { projectPath: string; noCache?: boolean; service?: string },
   sessionManager: SessionManager,
-  _server?: unknown,
-  _progressToken?: string | number,
+  platform?: PlatformServices,
 ): Promise<BuildResult> {
   const session = sessionManager.getOrThrow(params.projectPath);
   const targets = getServicesToBuild(session.config, params.service);
 
   const totalStart = Date.now();
   const results: BuildResult['services'] = [];
+  const bus = sessionManager.eventBus;
+
+  bus?.emit('activity', {
+    event: 'activity_start',
+    data: { id: `build-${totalStart}`, source: 'ai', operation: 'build', project: session.config.project.name, status: 'running', startTime: totalStart },
+  });
 
   for (const target of targets) {
     const buildStart = Date.now();
@@ -86,6 +92,7 @@ export async function handleBuild(
       };
 
       for await (const event of buildImage(buildOpts)) {
+        bus?.emit('build', { event: event.type, data: event });
         if (event.type === 'build_log') {
           lineNumber++;
         }
@@ -111,8 +118,37 @@ export async function handleBuild(
     sessionManager.transition(params.projectPath, 'built');
   }
 
-  return {
-    services: results,
-    totalDuration: Date.now() - totalStart,
-  };
+  const totalDuration = Date.now() - totalStart;
+  bus?.emit('activity', {
+    event: 'activity_update',
+    data: { id: `build-${totalStart}`, source: 'ai', operation: 'build', project: session.config.project.name, status: anyFailed ? 'failed' : 'success', startTime: totalStart, endTime: Date.now() },
+  });
+
+  // Persist build records
+  if (platform?.store) {
+    for (const r of results) {
+      platform.store.saveBuildRecord({
+        id: `build-${totalStart}-${r.name}`,
+        project: session.projectPath,
+        image: r.image,
+        status: r.status,
+        duration: r.duration,
+        timestamp: totalStart,
+        source: 'ai',
+        error: r.error,
+      }).catch(() => {});
+    }
+  }
+
+  // Notify on failure
+  if (anyFailed && platform?.notifier) {
+    const failedNames = results.filter(r => r.status === 'failed').map(r => r.name);
+    platform.notifier.notifyBuildFailure(
+      session.projectPath,
+      failedNames.join(', '),
+      results.find(r => r.error)?.error ?? 'Build failed',
+    ).catch(() => {});
+  }
+
+  return { services: results, totalDuration };
 }

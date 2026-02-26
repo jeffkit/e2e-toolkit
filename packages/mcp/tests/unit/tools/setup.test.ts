@@ -1,13 +1,13 @@
 /**
- * Unit tests for preflight_setup tool handler.
+ * Unit tests for argus_setup tool handler.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SessionManager, SessionError } from '../../../src/session.js';
 import { handleSetup } from '../../../src/tools/setup.js';
-import type { E2EConfig } from '@preflight/core';
+import type { E2EConfig } from 'argusai-core';
 
-vi.mock('@preflight/core', async (importOriginal) => {
+vi.mock('argusai-core', async (importOriginal) => {
   const orig = await importOriginal() as Record<string, unknown>;
   return {
     ...orig,
@@ -26,7 +26,7 @@ vi.mock('@preflight/core', async (importOriginal) => {
   };
 });
 
-const { startContainer, waitForHealthy, isPortInUse } = await import('@preflight/core');
+const { startContainer, waitForHealthy, isPortInUse } = await import('argusai-core');
 
 function setupSession(manager: SessionManager, projectPath = '/test/project'): void {
   const config: E2EConfig = {

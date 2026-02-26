@@ -1,0 +1,349 @@
+/**
+ * @module runtime
+ * Abstract container runtime interface.
+ *
+ * Provides a unified API for running containers regardless of the
+ * underlying backend (Docker CLI, Kubernetes, etc.).
+ *
+ * - DockerRuntime: wraps the existing docker-engine functions (default)
+ * - KubernetesRuntime: creates ephemeral Pods/Jobs (requires kubectl)
+ *
+ * Local mode always uses DockerRuntime. The runtime is selected via
+ * configuration and is fully transparent to callers.
+ */
+
+import type { BuildEvent, ContainerStatus } from './types.js';
+
+// =====================================================================
+// Types
+// =====================================================================
+
+export interface RuntimeBuildOptions {
+  dockerfile: string;
+  context: string;
+  imageName: string;
+  buildArgs?: Record<string, string>;
+  noCache?: boolean;
+}
+
+export interface RuntimeRunOptions {
+  name: string;
+  image: string;
+  ports: string[];
+  environment?: Record<string, string>;
+  volumes?: string[];
+  network?: string;
+  healthcheck?: {
+    cmd: string;
+    interval: string;
+    timeout: string;
+    retries: number;
+    startPeriod: string;
+  };
+  /** CPU limit (Docker: --cpus, K8s: resources.limits.cpu) */
+  cpuLimit?: number;
+  /** Memory limit, e.g. "512m" (Docker: --memory, K8s: resources.limits.memory) */
+  memoryLimit?: string;
+}
+
+export interface RuntimeExecResult {
+  stdout: string;
+  exitCode: number;
+}
+
+// =====================================================================
+// Runtime Interface
+// =====================================================================
+
+export interface ContainerRuntime {
+  readonly name: string;
+
+  buildImage(options: RuntimeBuildOptions): AsyncGenerator<BuildEvent>;
+
+  startContainer(options: RuntimeRunOptions): Promise<string>;
+  stopContainer(name: string): Promise<void>;
+  getContainerStatus(name: string): Promise<ContainerStatus>;
+  isContainerRunning(name: string): Promise<boolean>;
+  getContainerLogs(name: string, lines?: number): Promise<string>;
+  execInContainer(name: string, command: string): Promise<string>;
+
+  ensureNetwork(name: string): Promise<void>;
+  removeNetwork(name: string): Promise<void>;
+
+  waitForHealthy(name: string, timeoutMs?: number): Promise<boolean>;
+}
+
+// =====================================================================
+// DockerRuntime — wraps docker-engine.ts
+// =====================================================================
+
+export class DockerRuntime implements ContainerRuntime {
+  readonly name = 'docker';
+
+  async *buildImage(options: RuntimeBuildOptions): AsyncGenerator<BuildEvent> {
+    const { buildImage } = await import('./docker-engine.js');
+    yield* buildImage(options);
+  }
+
+  async startContainer(options: RuntimeRunOptions): Promise<string> {
+    const { startContainer, buildRunArgs } = await import('./docker-engine.js');
+    const dockerOpts = {
+      ...options,
+      cpuLimit: undefined,
+      memoryLimit: undefined,
+    };
+    return startContainer(dockerOpts);
+  }
+
+  async stopContainer(name: string): Promise<void> {
+    const { stopContainer } = await import('./docker-engine.js');
+    return stopContainer(name);
+  }
+
+  async getContainerStatus(name: string): Promise<ContainerStatus> {
+    const { getContainerStatus } = await import('./docker-engine.js');
+    return getContainerStatus(name);
+  }
+
+  async isContainerRunning(name: string): Promise<boolean> {
+    const { isContainerRunning } = await import('./docker-engine.js');
+    return isContainerRunning(name);
+  }
+
+  async getContainerLogs(name: string, lines = 100): Promise<string> {
+    const { getContainerLogs } = await import('./docker-engine.js');
+    return getContainerLogs(name, lines);
+  }
+
+  async execInContainer(name: string, command: string): Promise<string> {
+    const { execInContainer } = await import('./docker-engine.js');
+    return execInContainer(name, command);
+  }
+
+  async ensureNetwork(name: string): Promise<void> {
+    const { ensureNetwork } = await import('./docker-engine.js');
+    return ensureNetwork(name);
+  }
+
+  async removeNetwork(name: string): Promise<void> {
+    const { removeNetwork } = await import('./docker-engine.js');
+    return removeNetwork(name);
+  }
+
+  async waitForHealthy(name: string, timeoutMs = 120_000): Promise<boolean> {
+    const { waitForHealthy } = await import('./docker-engine.js');
+    return waitForHealthy(name, timeoutMs);
+  }
+}
+
+// =====================================================================
+// KubernetesRuntime — creates ephemeral Pods via kubectl
+// =====================================================================
+
+export interface K8sRuntimeOptions {
+  namespace?: string;
+  kubeconfig?: string;
+  /** Image pull secret name for private registries. */
+  imagePullSecret?: string;
+  /** Node selector labels. */
+  nodeSelector?: Record<string, string>;
+}
+
+export class KubernetesRuntime implements ContainerRuntime {
+  readonly name = 'kubernetes';
+  private readonly namespace: string;
+  private readonly kubeconfig?: string;
+  private readonly imagePullSecret?: string;
+  private readonly nodeSelector?: Record<string, string>;
+
+  constructor(options?: K8sRuntimeOptions) {
+    this.namespace = options?.namespace ?? 'preflight';
+    this.kubeconfig = options?.kubeconfig;
+    this.imagePullSecret = options?.imagePullSecret;
+    this.nodeSelector = options?.nodeSelector;
+  }
+
+  private kubectlArgs(): string[] {
+    const args: string[] = [];
+    if (this.kubeconfig) args.push('--kubeconfig', this.kubeconfig);
+    args.push('-n', this.namespace);
+    return args;
+  }
+
+  private async kubectl(args: string[]): Promise<string> {
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const exec = promisify(execFile);
+    const fullArgs = [...this.kubectlArgs(), ...args];
+    try {
+      const { stdout } = await exec('kubectl', fullArgs, { timeout: 15_000 });
+      return stdout.trim();
+    } catch (err: unknown) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code === 'ENOENT') throw new Error('kubectl not found — is it installed?');
+      throw err;
+    }
+  }
+
+  async *buildImage(options: RuntimeBuildOptions): AsyncGenerator<BuildEvent> {
+    // K8s doesn't build locally — delegate to Docker for the build step,
+    // then the image must be pushed to a registry accessible by the cluster.
+    const { buildImage } = await import('./docker-engine.js');
+    yield* buildImage(options);
+  }
+
+  async startContainer(options: RuntimeRunOptions): Promise<string> {
+    const podSpec = this.buildPodSpec(options);
+    const manifest = JSON.stringify(podSpec);
+
+    await this.ensureNamespace();
+    await this.kubectl(['apply', '-f', '-', '--stdin']);
+
+    // Use create with raw stdin via child_process for the manifest
+    const { execFile } = await import('node:child_process');
+    const { promisify } = await import('node:util');
+    const exec = promisify(execFile);
+    await exec('kubectl', [...this.kubectlArgs(), 'apply', '-f', '-'], {
+      env: { ...process.env },
+    }).catch(async () => {
+      // Fallback: write to temp file
+      const fs = await import('node:fs');
+      const os = await import('node:os');
+      const path = await import('node:path');
+      const tmpFile = path.join(os.tmpdir(), `preflight-pod-${options.name}.json`);
+      fs.writeFileSync(tmpFile, manifest);
+      await this.kubectl(['apply', '-f', tmpFile]);
+      fs.unlinkSync(tmpFile);
+    });
+
+    return options.name;
+  }
+
+  async stopContainer(name: string): Promise<void> {
+    await this.kubectl(['delete', 'pod', name, '--ignore-not-found', '--grace-period=10']).catch(() => {});
+  }
+
+  async getContainerStatus(name: string): Promise<ContainerStatus> {
+    try {
+      const json = await this.kubectl(['get', 'pod', name, '-o', 'json']);
+      const pod = JSON.parse(json);
+      const phase = pod.status?.phase?.toLowerCase() ?? 'unknown';
+
+      const statusMap: Record<string, ContainerStatus> = {
+        running: 'running',
+        succeeded: 'exited',
+        failed: 'exited',
+        pending: 'created',
+      };
+      return statusMap[phase] ?? 'unknown';
+    } catch {
+      return 'unknown';
+    }
+  }
+
+  async isContainerRunning(name: string): Promise<boolean> {
+    const status = await this.getContainerStatus(name);
+    return status === 'running';
+  }
+
+  async getContainerLogs(name: string, lines = 100): Promise<string> {
+    return this.kubectl(['logs', name, `--tail=${lines}`]).catch(() => '');
+  }
+
+  async execInContainer(name: string, command: string): Promise<string> {
+    return this.kubectl(['exec', name, '--', 'sh', '-c', command]);
+  }
+
+  async ensureNetwork(_name: string): Promise<void> {
+    // K8s uses its own network model — Pods in the same namespace can communicate
+    await this.ensureNamespace();
+  }
+
+  async removeNetwork(_name: string): Promise<void> {
+    // No-op in K8s — namespace-level isolation
+  }
+
+  async waitForHealthy(name: string, timeoutMs = 120_000): Promise<boolean> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+      const status = await this.getContainerStatus(name);
+      if (status === 'running') return true;
+      if (status === 'exited' || status === 'dead') return false;
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    return false;
+  }
+
+  // ----- Internal -----
+
+  private async ensureNamespace(): Promise<void> {
+    await this.kubectl(['create', 'namespace', this.namespace, '--dry-run=client', '-o', 'yaml'])
+      .then(yaml => this.kubectl(['apply', '-f', '-']))
+      .catch(() => {});
+  }
+
+  private buildPodSpec(options: RuntimeRunOptions): Record<string, unknown> {
+    const container: Record<string, unknown> = {
+      name: options.name,
+      image: options.image,
+      ports: options.ports.map(p => {
+        const [, containerPort] = p.split(':');
+        return { containerPort: parseInt(containerPort, 10) };
+      }),
+    };
+
+    if (options.environment) {
+      container.env = Object.entries(options.environment).map(([name, value]) => ({ name, value }));
+    }
+
+    const resources: Record<string, Record<string, string>> = {};
+    if (options.cpuLimit || options.memoryLimit) {
+      resources.limits = {};
+      if (options.cpuLimit) resources.limits.cpu = `${options.cpuLimit * 1000}m`;
+      if (options.memoryLimit) resources.limits.memory = options.memoryLimit;
+    }
+    if (Object.keys(resources).length > 0) container.resources = resources;
+
+    const spec: Record<string, unknown> = {
+      containers: [container],
+      restartPolicy: 'Never',
+    };
+
+    if (this.imagePullSecret) {
+      spec.imagePullSecrets = [{ name: this.imagePullSecret }];
+    }
+    if (this.nodeSelector) {
+      spec.nodeSelector = this.nodeSelector;
+    }
+
+    return {
+      apiVersion: 'v1',
+      kind: 'Pod',
+      metadata: {
+        name: options.name,
+        namespace: this.namespace,
+        labels: { 'app.kubernetes.io/managed-by': 'preflight' },
+      },
+      spec,
+    };
+  }
+}
+
+// =====================================================================
+// Factory
+// =====================================================================
+
+export type RuntimeType = 'docker' | 'kubernetes';
+
+export interface RuntimeConfig {
+  type?: RuntimeType;
+  kubernetes?: K8sRuntimeOptions;
+}
+
+export function createRuntime(config?: RuntimeConfig): ContainerRuntime {
+  const type = config?.type ?? 'docker';
+  if (type === 'kubernetes') {
+    return new KubernetesRuntime(config?.kubernetes);
+  }
+  return new DockerRuntime();
+}

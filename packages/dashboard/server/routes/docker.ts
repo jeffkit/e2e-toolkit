@@ -10,8 +10,8 @@ import { type FastifyPluginAsync } from 'fastify';
 import { spawn, execSync, exec } from 'child_process';
 import { promisify } from 'util';
 import path from 'path';
-import type { E2EConfig, RepoConfig } from '@preflight/core';
-import { resolveRepoLocalPath, syncRepo, resolveBuildPaths, getRepoInfo } from '@preflight/core';
+import type { E2EConfig, RepoConfig } from 'argusai-core';
+import { resolveRepoLocalPath, syncRepo, resolveBuildPaths, getRepoInfo } from 'argusai-core';
 import { getAppState } from '../app-state.js';
 
 const execAsync = promisify(exec);
@@ -235,6 +235,12 @@ function broadcast(event: string, data: unknown) {
       sseClients.delete(client);
     }
   }
+  // Forward to unified EventBus so AI activity is visible in dashboard
+  try {
+    const bus = getAppState().eventBus;
+    const channel = event.startsWith('build') ? 'build' : event.startsWith('pipeline') ? 'activity' : 'container';
+    bus.emit(channel, { event, data });
+  } catch { /* appState not ready yet */ }
 }
 
 // =====================================================================
@@ -268,6 +274,7 @@ export const dockerRoutes: FastifyPluginAsync = async (_app) => {
       eventBus: getEventBus(),
     };
   }
+
 
   const app = _app;
 

@@ -1,16 +1,16 @@
 /**
- * Unit tests for preflight_init tool handler.
+ * Unit tests for argus_init tool handler.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SessionManager, SessionError } from '../../../src/session.js';
 import { handleInit } from '../../../src/tools/init.js';
 
-vi.mock('@preflight/core', () => ({
+vi.mock('argusai-core', () => ({
   loadConfig: vi.fn(),
 }));
 
-const { loadConfig } = await import('@preflight/core');
+const { loadConfig } = await import('argusai-core');
 
 function mockConfig() {
   return {

@@ -2,7 +2,7 @@
  * @module commands/mcp-server
  * `preflight mcp-server` — Start the MCP server with stdio transport.
  *
- * Launches the @preflight/mcp server process so AI agents (Cursor, Claude Code)
+ * Launches the argusai-mcp server process so AI agents (Cursor, Claude Code)
  * can connect via the Model Context Protocol.
  */
 
@@ -13,7 +13,7 @@ export function registerMcpServer(program: Command): void {
     .command('mcp-server')
     .description('Start the MCP server for AI agent integration')
     .action(async () => {
-      const { createServer } = await import('@preflight/mcp');
+      const { createServer } = await import('argusai-mcp');
       const { StdioServerTransport } = await import('@modelcontextprotocol/sdk/server/stdio.js');
 
       const { server } = createServer();

@@ -445,6 +445,43 @@ export type ContainerEvent =
   | { type: 'container_log'; name: string; line: string; stream: 'stdout' | 'stderr'; timestamp: number }
   | { type: 'container_error'; name: string; error: string; timestamp: number };
 
+// ==================== Setup/Clean 生命周期事件 ====================
+
+export type SetupEvent =
+  | { type: 'setup_start'; project: string; timestamp: number }
+  | { type: 'network_created'; name: string; timestamp: number }
+  | { type: 'mock_starting'; name: string; port: number; timestamp: number }
+  | { type: 'mock_started'; name: string; port: number; timestamp: number }
+  | { type: 'service_starting'; name: string; image: string; timestamp: number }
+  | { type: 'service_healthy'; name: string; duration: number; timestamp: number }
+  | { type: 'setup_end'; duration: number; success: boolean; error?: string; timestamp: number };
+
+export type CleanEvent =
+  | { type: 'clean_start'; project: string; timestamp: number }
+  | { type: 'container_removing'; name: string; timestamp: number }
+  | { type: 'container_removed'; name: string; timestamp: number }
+  | { type: 'mock_stopped'; name: string; timestamp: number }
+  | { type: 'network_removed'; name: string; timestamp: number }
+  | { type: 'clean_end'; duration: number; timestamp: number };
+
+/** Unified event type spanning all lifecycle phases. */
+export type PreflightEvent = TestEvent | BuildEvent | ContainerEvent | SetupEvent | CleanEvent;
+
+/** Preflight event channels for the SSE bus. */
+export type PreflightChannel = 'test' | 'build' | 'container' | 'setup' | 'clean' | 'activity';
+
+/** Entry in the activity timeline — tracks a single high-level operation. */
+export interface ActivityEntry {
+  id: string;
+  source: 'ai' | 'manual' | 'system';
+  operation: string;
+  project: string;
+  status: 'running' | 'success' | 'failed';
+  startTime: number;
+  endTime?: number;
+  detail?: string;
+}
+
 // ==================== SSE ====================
 
 export interface SSEMessage {

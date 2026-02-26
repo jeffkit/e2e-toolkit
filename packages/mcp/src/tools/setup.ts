@@ -1,6 +1,6 @@
 /**
  * @module tools/setup
- * preflight_setup — Start the test environment.
+ * argus_setup — Start the test environment.
  *
  * Uses MultiServiceOrchestrator for config normalization and dependency
  * ordering, while keeping Docker calls at this level for testability.
@@ -17,7 +17,7 @@ import {
   type E2EConfig,
   type ServiceDefinition,
   type MockServiceConfig,
-} from '@preflight/core';
+} from 'argusai-core';
 import { SessionManager, SessionError } from '../session.js';
 
 export interface SetupResult {
@@ -61,7 +61,7 @@ function buildHealthcheckCmd(svc: ServiceDefinition) {
 }
 
 /**
- * Handle the preflight_setup MCP tool call.
+ * Handle the argus_setup MCP tool call.
  * Creates Docker network, starts mock services and service containers,
  * and waits for health checks in dependency order.
  *
@@ -79,10 +79,18 @@ export async function handleSetup(
   const totalStart = Date.now();
   const healthTimeout = params.timeout ? parseTime(params.timeout) : 120_000;
 
+  const bus = sessionManager.eventBus;
+  const ts = () => Date.now();
+
+  bus?.emit('activity', {
+    event: 'activity_start',
+    data: { id: `setup-${totalStart}`, source: 'ai', operation: 'setup', project: config.project.name, status: 'running', startTime: totalStart },
+  });
+  bus?.emit('setup', { event: 'setup_start', data: { type: 'setup_start', project: config.project.name, timestamp: ts() } });
+
   const orchestrator = new MultiServiceOrchestrator();
   const services = orchestrator.normalizeServices(config);
 
-  // Sort services by dependency order
   const orderedServices = services.length > 0
     ? orchestrator.topologicalSort(services)
     : [];
@@ -92,6 +100,7 @@ export async function handleSetup(
   try {
     await ensureNetwork(session.networkName);
     networkCreated = true;
+    bus?.emit('setup', { event: 'network_created', data: { type: 'network_created', name: session.networkName, timestamp: ts() } });
   } catch {
     // Network may already exist
   }
@@ -107,9 +116,11 @@ export async function handleSetup(
           throw new SessionError('PORT_CONFLICT', `Port ${mc.port} is already in use for mock "${name}"`);
         }
 
+        bus?.emit('setup', { event: 'mock_starting', data: { type: 'mock_starting', name, port: mc.port, timestamp: ts() } });
         const mockServer = createMockServer(mc);
         await mockServer.listen({ port: mc.port, host: '0.0.0.0' });
         session.mockServers.set(name, { server: mockServer, port: mc.port });
+        bus?.emit('setup', { event: 'mock_started', data: { type: 'mock_started', name, port: mc.port, timestamp: ts() } });
         mockResults.push({
           name,
           port: mc.port,
@@ -133,6 +144,7 @@ export async function handleSetup(
 
   for (const svc of orderedServices) {
     try {
+      bus?.emit('setup', { event: 'service_starting', data: { type: 'service_starting', name: svc.name, image: svc.build.image, timestamp: ts() } });
       const containerId = await startContainer({
         name: svc.container.name,
         image: svc.build.image,
@@ -153,6 +165,9 @@ export async function handleSetup(
         const isHealthy = await waitForHealthy(svc.container.name, healthTimeout);
         healthCheckDuration = Date.now() - hcStart;
         status = isHealthy ? 'healthy' : 'unhealthy';
+        if (isHealthy) {
+          bus?.emit('setup', { event: 'service_healthy', data: { type: 'service_healthy', name: svc.name, duration: healthCheckDuration, timestamp: ts() } });
+        }
       }
 
       serviceResults.push({
@@ -180,10 +195,17 @@ export async function handleSetup(
     sessionManager.transition(params.projectPath, 'running');
   }
 
+  const totalDuration = Date.now() - totalStart;
+  bus?.emit('setup', { event: 'setup_end', data: { type: 'setup_end', duration: totalDuration, success: allHealthy, timestamp: ts() } });
+  bus?.emit('activity', {
+    event: 'activity_update',
+    data: { id: `setup-${totalStart}`, source: 'ai', operation: 'setup', project: config.project.name, status: allHealthy ? 'success' : 'failed', startTime: totalStart, endTime: Date.now() },
+  });
+
   return {
     network: { name: session.networkName, created: networkCreated },
     services: serviceResults,
     mocks: mockResults,
-    totalDuration: Date.now() - totalStart,
+    totalDuration,
   };
 }

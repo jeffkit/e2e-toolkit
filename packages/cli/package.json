@@ -1,7 +1,15 @@
 {
-  "name": "@preflight/cli",
+  "name": "argusai",
   "version": "0.1.0",
   "type": "module",
+  "description": "ArgusAI — AI-native end-to-end testing CLI. The hundred-eyed guardian for your code.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jeffkit/preflight.git",
+    "directory": "packages/cli"
+  },
+  "keywords": ["argusai", "e2e", "testing", "docker", "ai", "mcp", "cli", "automation", "acceptance-testing"],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -11,16 +19,9 @@
     }
   },
   "bin": {
-    "preflight": "./dist/index.js",
-    "e2e-toolkit": "./dist/index.js"
+    "argusai": "./dist/index.js"
   },
-  "files": [
-    "dist/",
-    "README.md"
-  ],
-  "publishConfig": {
-    "access": "public"
-  },
+  "files": ["dist/", "README.md"],
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
@@ -28,10 +29,13 @@
     "test:run": "vitest run"
   },
   "dependencies": {
-    "@preflight/core": "workspace:*",
+    "argusai-core": "workspace:*",
+    "argusai-dashboard": "workspace:*",
+    "argusai-mcp": "workspace:*",
     "commander": "^12.0.0"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.11.0",
     "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",

@@ -8,9 +8,9 @@
 import { type FastifyPluginAsync } from 'fastify';
 import { spawn } from 'child_process';
 import path from 'path';
-import type { E2EConfig, TestSuiteConfig, TestEvent } from '@preflight/core';
-import { loadYAMLTests, executeYAMLSuite } from '@preflight/core';
-import { getAppState } from '../app-state.js';
+import type { E2EConfig, TestSuiteConfig, TestEvent } from 'argusai-core';
+import { loadYAMLTests, executeYAMLSuite } from 'argusai-core';
+import { getAppState, addActivity, updateActivity } from '../app-state.js';
 
 /** 去除 ANSI 转义码 */
 function stripAnsi(str: string): string {
@@ -121,11 +121,14 @@ export const testRoutes: FastifyPluginAsync = async (app) => {
       const testFile = path.resolve(configDir, suite.file || '');
       const baseUrl = containerUrl;
 
-      // Run async in the background
+      const activityId = `run-manual-${Date.now()}`;
+      addActivity({ id: activityId, source: 'manual', operation: 'run', project: config?.project.name ?? 'unknown', status: 'running', startTime: Date.now() });
+
       (async () => {
         try {
           const yamlSuite = await loadYAMLTests(testFile);
           const containerName = config?.service?.container?.name || 'e2e-container';
+          const { eventBus } = getAppState();
           const events = executeYAMLSuite(yamlSuite, {
             baseUrl,
             variables: { config: {}, runtime: {}, env: { BASE_URL: baseUrl, E2E_DASHBOARD_URL: dashboardUrl } },
@@ -136,9 +139,9 @@ export const testRoutes: FastifyPluginAsync = async (app) => {
           for await (const event of events) {
             const line = formatTestEvent(event);
             currentTest?.output.push(line);
+            eventBus.emit('test', { event: event.type, data: event });
           }
 
-          // Determine final status from output
           if (currentTest) {
             currentTest.endTime = Date.now();
             const hasFailure = currentTest.output.some(l => l.includes('FAIL') || l.includes('✗'));
@@ -146,6 +149,7 @@ export const testRoutes: FastifyPluginAsync = async (app) => {
             currentTest.exitCode = hasFailure ? 1 : 0;
             testHistory.unshift(currentTest);
             if (testHistory.length > 50) testHistory.length = 50;
+            updateActivity(activityId, { status: hasFailure ? 'failed' : 'success', endTime: Date.now() });
             currentTest = null;
           }
         } catch (err) {
@@ -156,6 +160,7 @@ export const testRoutes: FastifyPluginAsync = async (app) => {
             currentTest.output.push(`Error: ${(err as Error).message}`);
             testHistory.unshift(currentTest);
             if (testHistory.length > 50) testHistory.length = 50;
+            updateActivity(activityId, { status: 'failed', endTime: Date.now() });
             currentTest = null;
           }
         }

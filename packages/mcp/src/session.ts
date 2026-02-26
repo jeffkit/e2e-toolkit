@@ -5,11 +5,12 @@
  * Tracks loaded configuration, running containers, mock servers,
  * and the overall lifecycle state for each project.
  *
- * Includes a per-session mutex to prevent concurrent MCP operations
- * on the same project (e.g. two clients calling build simultaneously).
+ * Multi-tenant: session keys are `clientId:projectPath` so different
+ * clients can independently manage the same project. Includes TTL-based
+ * auto-cleanup and per-session mutex.
  */
 
-import type { E2EConfig } from '@preflight/core';
+import type { E2EConfig, SSEBus } from 'argusai-core';
 
 // =====================================================================
 // Types
@@ -25,7 +26,10 @@ export interface ProjectSession {
   mockServers: Map<string, { server: { close(): Promise<void> }; port: number }>;
   networkName: string;
   createdAt: number;
+  lastAccessedAt: number;
   state: SessionState;
+  /** Client identifier for multi-tenant isolation */
+  clientId: string;
 }
 
 const VALID_TRANSITIONS: Record<SessionState, SessionState[]> = {
@@ -35,37 +39,35 @@ const VALID_TRANSITIONS: Record<SessionState, SessionState[]> = {
   stopped: ['initialized'],
 };
 
+/** Default session TTL: 2 hours of inactivity */
+const DEFAULT_TTL_MS = 2 * 60 * 60 * 1000;
+/** Cleanup check interval: every 5 minutes */
+const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+
 // =====================================================================
-// SessionMutex — prevents concurrent operations on the same project
+// SessionMutex — prevents concurrent operations on the same session
 // =====================================================================
 
 class SessionMutex {
   private locks = new Map<string, { holder: string; acquired: number }>();
-  private waitQueues = new Map<string, Array<{ resolve: () => void; reject: (err: Error) => void }>>();
 
-  /**
-   * Acquire an exclusive lock for a project. If already held, throws
-   * INVALID_STATE immediately (non-blocking guard).
-   */
-  acquire(projectPath: string, operation: string): void {
-    const existing = this.locks.get(projectPath);
+  acquire(key: string, operation: string): void {
+    const existing = this.locks.get(key);
     if (existing) {
       throw new SessionError(
         'INVALID_STATE',
-        `Concurrent operation rejected: "${operation}" cannot run while "${existing.holder}" is in progress for project ${projectPath}`,
+        `Concurrent operation rejected: "${operation}" cannot run while "${existing.holder}" is in progress`,
       );
     }
-    this.locks.set(projectPath, { holder: operation, acquired: Date.now() });
+    this.locks.set(key, { holder: operation, acquired: Date.now() });
   }
 
-  /** Release the lock for a project. */
-  release(projectPath: string): void {
-    this.locks.delete(projectPath);
+  release(key: string): void {
+    this.locks.delete(key);
   }
 
-  /** Check if a project currently has a held lock. */
-  isLocked(projectPath: string): boolean {
-    return this.locks.has(projectPath);
+  isLocked(key: string): boolean {
+    return this.locks.has(key);
   }
 }
 
@@ -73,37 +75,82 @@ class SessionMutex {
 // SessionManager
 // =====================================================================
 
+export interface SessionManagerOptions {
+  eventBus?: SSEBus;
+  /** Session TTL in milliseconds (default: 2 hours) */
+  ttlMs?: number;
+  /** Enable automatic cleanup of expired sessions */
+  autoCleanup?: boolean;
+}
+
 export class SessionManager {
   private sessions = new Map<string, ProjectSession>();
   private mutex = new SessionMutex();
+  private ttlMs: number;
+  private cleanupTimer?: ReturnType<typeof setInterval>;
+  public eventBus?: SSEBus;
+
+  constructor(eventBusOrOptions?: SSEBus | SessionManagerOptions) {
+    if (eventBusOrOptions && 'emit' in eventBusOrOptions) {
+      // Backward compat: called with just an EventBus
+      this.eventBus = eventBusOrOptions;
+      this.ttlMs = DEFAULT_TTL_MS;
+    } else if (eventBusOrOptions) {
+      this.eventBus = eventBusOrOptions.eventBus;
+      this.ttlMs = eventBusOrOptions.ttlMs ?? DEFAULT_TTL_MS;
+      if (eventBusOrOptions.autoCleanup !== false) {
+        this.startCleanup();
+      }
+    } else {
+      this.ttlMs = DEFAULT_TTL_MS;
+    }
+  }
+
+  /** Build the composite session key. */
+  private key(clientId: string, projectPath: string): string {
+    return `${clientId}:${projectPath}`;
+  }
+
+  /** Default client ID for single-tenant (stdio) mode. */
+  static readonly DEFAULT_CLIENT = 'default';
 
   /**
-   * Check whether a session exists for the given project path.
+   * Check whether a session exists for the given project.
+   * Falls back to default client if clientId is not provided.
    */
-  has(projectPath: string): boolean {
-    return this.sessions.has(projectPath);
+  has(projectPath: string, clientId: string = SessionManager.DEFAULT_CLIENT): boolean {
+    return this.sessions.has(this.key(clientId, projectPath));
   }
 
   /**
    * Retrieve an existing session or throw SESSION_NOT_FOUND.
    */
-  getOrThrow(projectPath: string): ProjectSession {
-    const session = this.sessions.get(projectPath);
+  getOrThrow(projectPath: string, clientId: string = SessionManager.DEFAULT_CLIENT): ProjectSession {
+    const k = this.key(clientId, projectPath);
+    const session = this.sessions.get(k);
     if (!session) {
-      throw new SessionError('SESSION_NOT_FOUND', `No active session for project: ${projectPath}`);
+      throw new SessionError('SESSION_NOT_FOUND', `No active session for project: ${projectPath} (client: ${clientId})`);
     }
+    session.lastAccessedAt = Date.now();
     return session;
   }
 
   /**
-   * Create a new session for a project. Throws SESSION_EXISTS if one already exists.
+   * Create a new session for a project.
    */
-  create(projectPath: string, config: E2EConfig, configPath: string): ProjectSession {
-    if (this.sessions.has(projectPath)) {
-      throw new SessionError('SESSION_EXISTS', `Session already exists for project: ${projectPath}`);
+  create(
+    projectPath: string,
+    config: E2EConfig,
+    configPath: string,
+    clientId: string = SessionManager.DEFAULT_CLIENT,
+  ): ProjectSession {
+    const k = this.key(clientId, projectPath);
+    if (this.sessions.has(k)) {
+      throw new SessionError('SESSION_EXISTS', `Session already exists for project: ${projectPath} (client: ${clientId})`);
     }
 
     const networkName = config.network?.name ?? 'e2e-network';
+    const now = Date.now();
 
     const session: ProjectSession = {
       projectPath,
@@ -112,27 +159,30 @@ export class SessionManager {
       containerIds: new Map(),
       mockServers: new Map(),
       networkName,
-      createdAt: Date.now(),
+      createdAt: now,
+      lastAccessedAt: now,
       state: 'initialized',
+      clientId,
     };
 
-    this.sessions.set(projectPath, session);
+    this.sessions.set(k, session);
     return session;
   }
 
   /**
    * Remove a session and release any held lock.
    */
-  remove(projectPath: string): void {
-    this.mutex.release(projectPath);
-    this.sessions.delete(projectPath);
+  remove(projectPath: string, clientId: string = SessionManager.DEFAULT_CLIENT): void {
+    const k = this.key(clientId, projectPath);
+    this.mutex.release(k);
+    this.sessions.delete(k);
   }
 
   /**
    * Transition a session to a new state, validating the state machine.
    */
-  transition(projectPath: string, newState: SessionState): void {
-    const session = this.getOrThrow(projectPath);
+  transition(projectPath: string, newState: SessionState, clientId: string = SessionManager.DEFAULT_CLIENT): void {
+    const session = this.getOrThrow(projectPath, clientId);
     const allowed = VALID_TRANSITIONS[session.state];
     if (!allowed.includes(newState)) {
       throw new SessionError(
@@ -143,28 +193,92 @@ export class SessionManager {
     session.state = newState;
   }
 
-  /**
-   * Acquire an exclusive operation lock for a project.
-   * Prevents concurrent MCP clients from running operations simultaneously.
-   *
-   * @throws {SessionError} with code INVALID_STATE if another operation is in progress
-   */
-  acquireLock(projectPath: string, operation: string): void {
-    this.mutex.acquire(projectPath, operation);
+  acquireLock(projectPath: string, operation: string, clientId: string = SessionManager.DEFAULT_CLIENT): void {
+    this.mutex.acquire(this.key(clientId, projectPath), operation);
   }
 
-  /**
-   * Release the operation lock for a project.
-   */
-  releaseLock(projectPath: string): void {
-    this.mutex.release(projectPath);
+  releaseLock(projectPath: string, clientId: string = SessionManager.DEFAULT_CLIENT): void {
+    this.mutex.release(this.key(clientId, projectPath));
   }
 
-  /**
-   * Check if a project session is currently locked by an operation.
-   */
-  isLocked(projectPath: string): boolean {
-    return this.mutex.isLocked(projectPath);
+  isLocked(projectPath: string, clientId: string = SessionManager.DEFAULT_CLIENT): boolean {
+    return this.mutex.isLocked(this.key(clientId, projectPath));
+  }
+
+  // =====================================================================
+  // Multi-tenant helpers
+  // =====================================================================
+
+  /** List all active sessions. */
+  listSessions(): ProjectSession[] {
+    return [...this.sessions.values()];
+  }
+
+  /** List sessions for a specific client. */
+  listClientSessions(clientId: string): ProjectSession[] {
+    return [...this.sessions.values()].filter(s => s.clientId === clientId);
+  }
+
+  /** Get total number of active sessions. */
+  get size(): number {
+    return this.sessions.size;
+  }
+
+  // =====================================================================
+  // TTL / Auto-cleanup
+  // =====================================================================
+
+  /** Start the periodic cleanup timer. */
+  startCleanup(): void {
+    if (this.cleanupTimer) return;
+    this.cleanupTimer = setInterval(() => this.cleanupExpired(), CLEANUP_INTERVAL_MS);
+    if (this.cleanupTimer.unref) this.cleanupTimer.unref();
+  }
+
+  /** Stop the periodic cleanup timer. */
+  stopCleanup(): void {
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+      this.cleanupTimer = undefined;
+    }
+  }
+
+  /** Remove sessions that haven't been accessed within the TTL period. */
+  cleanupExpired(): string[] {
+    const now = Date.now();
+    const expired: string[] = [];
+
+    for (const [key, session] of this.sessions) {
+      if (now - session.lastAccessedAt > this.ttlMs) {
+        // Best-effort cleanup of mock servers
+        for (const [, mock] of session.mockServers) {
+          mock.server.close().catch(() => {});
+        }
+        this.mutex.release(key);
+        this.sessions.delete(key);
+        expired.push(key);
+      }
+    }
+
+    if (expired.length > 0) {
+      this.eventBus?.emit('activity', {
+        event: 'sessions_cleaned',
+        data: { expired, remaining: this.sessions.size },
+      });
+    }
+
+    return expired;
+  }
+
+  /** Destroy the manager: cleanup all sessions and stop the timer. */
+  destroy(): void {
+    this.stopCleanup();
+    for (const [, session] of this.sessions) {
+      for (const [, mock] of session.mockServers) {
+        mock.server.close().catch(() => {});
+      }
+    }
+    this.sessions.clear();
   }
 }
 

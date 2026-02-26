@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { SessionManager, SessionError } from '../../src/session.js';
-import type { E2EConfig } from '@preflight/core';
+import type { E2EConfig } from 'argusai-core';
 
 function makeConfig(name = 'test-project'): E2EConfig {
   return {

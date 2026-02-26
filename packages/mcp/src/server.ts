@@ -5,6 +5,7 @@
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
+import type { SSEBus, Store, TaskQueue, Notifier, ResourceLimiter } from 'argusai-core';
 import { SessionManager, SessionError } from './session.js';
 import { ResultFormatter } from './formatters/result-formatter.js';
 import { handleInit } from './tools/init.js';
@@ -15,6 +16,21 @@ import { handleStatus } from './tools/status.js';
 import { handleLogs } from './tools/logs.js';
 import { handleClean } from './tools/clean.js';
 import { handleMockRequests } from './tools/mock-requests.js';
+
+/** Shared platform services injected into tool handlers. */
+export interface PlatformServices {
+  store?: Store;
+  taskQueue?: TaskQueue;
+  notifier?: Notifier;
+  resourceLimiter?: ResourceLimiter;
+}
+
+/** Options for creating the MCP server with shared dependencies. */
+export interface CreateServerOptions {
+  sessionManager?: SessionManager;
+  eventBus?: SSEBus;
+  platform?: PlatformServices;
+}
 
 interface McpToolResponse<T = unknown> {
   success: boolean;
@@ -55,20 +71,30 @@ function handleError(err: unknown): { content: Array<{ type: 'text'; text: strin
 /**
  * Create and configure the MCP server with all 9 preflight tools registered.
  *
- * @returns The McpServer instance, a fresh SessionManager, and a ResultFormatter
+ * When called without options, creates standalone instances.
+ * Pass shared `sessionManager` and `eventBus` to integrate with Dashboard.
  */
-export function createServer(): { server: McpServer; sessionManager: SessionManager; formatter: ResultFormatter } {
+export function createServer(options?: CreateServerOptions): {
+  server: McpServer;
+  sessionManager: SessionManager;
+  formatter: ResultFormatter;
+  platform: PlatformServices;
+} {
   const server = new McpServer({
-    name: '@preflight/mcp',
+    name: 'argusai-mcp',
     version: '0.1.0',
   });
 
-  const sessionManager = new SessionManager();
+  const sessionManager = options?.sessionManager ?? new SessionManager(options?.eventBus);
+  if (options?.eventBus && !sessionManager.eventBus) {
+    sessionManager.eventBus = options.eventBus;
+  }
   const formatter = new ResultFormatter();
+  const platform = options?.platform ?? {};
 
-  // Tool 1: preflight_init
+  // Tool 1: argus_init
   server.tool(
-    'preflight_init',
+    'argus_init',
     {
       projectPath: z.string().describe('Absolute path to project directory containing e2e.yaml'),
       configFile: z.string().optional().describe('Config filename override (default: e2e.yaml)'),
@@ -83,9 +109,9 @@ export function createServer(): { server: McpServer; sessionManager: SessionMana
     },
   );
 
-  // Tool 2: preflight_build
+  // Tool 2: argus_build
   server.tool(
-    'preflight_build',
+    'argus_build',
     {
       projectPath: z.string().describe('Project path (must have active session)'),
       noCache: z.boolean().optional().describe('Disable Docker layer cache'),
@@ -93,7 +119,7 @@ export function createServer(): { server: McpServer; sessionManager: SessionMana
     },
     async (params) => {
       try {
-        const result = await handleBuild(params, sessionManager);
+        const result = await handleBuild(params, sessionManager, platform);
         return successResponse(result);
       } catch (err) {
         return handleError(err);
@@ -101,9 +127,9 @@ export function createServer(): { server: McpServer; sessionManager: SessionMana
     },
   );
 
-  // Tool 3: preflight_setup
+  // Tool 3: argus_setup
   server.tool(
-    'preflight_setup',
+    'argus_setup',
     {
       projectPath: z.string().describe('Project path (must have built images)'),
       timeout: z.string().optional().describe('Health check timeout override, e.g. "120s"'),
@@ -118,9 +144,9 @@ export function createServer(): { server: McpServer; sessionManager: SessionMana
     },
   );
 
-  // Tool 4: preflight_run
+  // Tool 4: argus_run
   server.tool(
-    'preflight_run',
+    'argus_run',
     {
       projectPath: z.string().describe('Project path (must have running environment)'),
       filter: z.string().optional().describe('Suite ID filter (comma-separated for multiple)'),
@@ -128,7 +154,7 @@ export function createServer(): { server: McpServer; sessionManager: SessionMana
     },
     async (params) => {
       try {
-        const result = await handleRun(params, sessionManager, formatter);
+        const result = await handleRun(params, sessionManager, formatter, platform);
         return successResponse(result);
       } catch (err) {
         return handleError(err);
@@ -136,16 +162,16 @@ export function createServer(): { server: McpServer; sessionManager: SessionMana
     },
   );
 
-  // Tool 5: preflight_run_suite
+  // Tool 5: argus_run_suite
   server.tool(
-    'preflight_run_suite',
+    'argus_run_suite',
     {
       projectPath: z.string().describe('Project path'),
       suiteId: z.string().describe('Suite identifier to run'),
     },
     async (params) => {
       try {
-        const result = await handleRunSuite(params, sessionManager, formatter);
+        const result = await handleRunSuite(params, sessionManager, formatter, platform);
         return successResponse(result);
       } catch (err) {
         return handleError(err);
@@ -153,9 +179,9 @@ export function createServer(): { server: McpServer; sessionManager: SessionMana
     },
   );
 
-  // Tool 6: preflight_status
+  // Tool 6: argus_status
   server.tool(
-    'preflight_status',
+    'argus_status',
     {
       projectPath: z.string().describe('Project path'),
     },
@@ -169,9 +195,9 @@ export function createServer(): { server: McpServer; sessionManager: SessionMana
     },
   );
 
-  // Tool 7: preflight_logs
+  // Tool 7: argus_logs
   server.tool(
-    'preflight_logs',
+    'argus_logs',
     {
       projectPath: z.string().describe('Project path'),
       container: z.string().describe('Container name'),
@@ -188,9 +214,9 @@ export function createServer(): { server: McpServer; sessionManager: SessionMana
     },
   );
 
-  // Tool 8: preflight_clean
+  // Tool 8: argus_clean
   server.tool(
-    'preflight_clean',
+    'argus_clean',
     {
       projectPath: z.string().describe('Project path'),
       force: z.boolean().optional().describe('Force remove stuck containers'),
@@ -205,9 +231,9 @@ export function createServer(): { server: McpServer; sessionManager: SessionMana
     },
   );
 
-  // Tool 9: preflight_mock_requests
+  // Tool 9: argus_mock_requests
   server.tool(
-    'preflight_mock_requests',
+    'argus_mock_requests',
     {
       projectPath: z.string().describe('Project path'),
       mockName: z.string().optional().describe('Specific mock name (default: all mocks)'),
@@ -224,5 +250,5 @@ export function createServer(): { server: McpServer; sessionManager: SessionMana
     },
   );
 
-  return { server, sessionManager, formatter };
+  return { server, sessionManager, formatter, platform };
 }

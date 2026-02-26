@@ -1,6 +1,6 @@
 /**
  * @module commands/init
- * `preflight init` — Initialize a new preflight project.
+ * `argusai init` — Initialize a new ArgusAI project.
  *
  * Creates:
  * - e2e.yaml template configuration
@@ -88,7 +88,7 @@ cases:
         status: ok
 `;
 
-const ENV_EXAMPLE = `# preflight environment variables
+const ENV_EXAMPLE = `# argusai environment variables
 # Copy this file to .env and adjust values as needed.
 
 # BASE_URL=http://localhost:8080
@@ -101,12 +101,12 @@ const ENV_EXAMPLE = `# preflight environment variables
 export function registerInit(program: Command): void {
   program
     .command('init')
-    .description('初始化 preflight 项目')
+    .description('初始化 ArgusAI 项目')
     .option('-d, --dir <directory>', '目标目录', '.')
     .action(async (opts: { dir: string }) => {
       const baseDir = path.resolve(opts.dir);
 
-      console.log(`\n${BOLD}Initializing preflight project...${RESET}\n`);
+      console.log(`\n${BOLD}Initializing ArgusAI project...${RESET}\n`);
 
       // 1. Create e2e.yaml
       const yamlPath = path.join(baseDir, 'e2e.yaml');

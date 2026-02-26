@@ -2,7 +2,7 @@
  * @module commands/dashboard
  * `preflight dashboard` — Launch the Dashboard UI.
  *
- * Since the dashboard is an independent package (`@preflight/dashboard`),
+ * Since the dashboard is an independent package (`argusai-dashboard`),
  * this command attempts to spawn the dashboard dev server directly.
  * If that fails it prints manual instructions.
  */

@@ -1,7 +1,15 @@
 {
-  "name": "@preflight/mcp",
+  "name": "argusai-mcp",
   "version": "0.1.0",
   "type": "module",
+  "description": "ArgusAI MCP server — expose E2E testing tools to AI coding agents via Model Context Protocol",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jeffkit/preflight.git",
+    "directory": "packages/mcp"
+  },
+  "keywords": ["argusai", "mcp", "ai", "testing", "model-context-protocol", "cursor", "claude"],
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -11,22 +19,16 @@
     }
   },
   "bin": {
-    "preflight-mcp": "./dist/index.js"
+    "argusai-mcp": "./dist/index.js"
   },
-  "files": [
-    "dist/",
-    "README.md"
-  ],
-  "publishConfig": {
-    "access": "public"
-  },
+  "files": ["dist/", "README.md"],
   "scripts": {
     "build": "tsc",
     "test": "vitest",
     "test:run": "vitest run"
   },
   "dependencies": {
-    "@preflight/core": "workspace:*",
+    "argusai-core": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.11.0",
     "zod": "^3.23.0"
   },

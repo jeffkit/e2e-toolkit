@@ -14,6 +14,31 @@ import type { BuildEvent, ContainerStatus, ContainerEvent } from './types.js';
 const execFileAsync = promisify(execFileCb);
 
 // =====================================================================
+// Docker Host (Remote Docker Support)
+// =====================================================================
+
+/**
+ * Get the Docker host connection arguments.
+ * When DOCKER_HOST is set (e.g. "tcp://remote:2376"), all docker commands
+ * will include `-H <host>` to connect to the remote daemon.
+ */
+export function getDockerHostArgs(): string[] {
+  const host = process.env.DOCKER_HOST;
+  if (host) return ['-H', host];
+  return [];
+}
+
+/** Prepend host args to any docker command args. */
+function dockerArgs(args: string[]): string[] {
+  return [...getDockerHostArgs(), ...args];
+}
+
+/** Check whether a remote Docker host is configured. */
+export function isDockerRemote(): boolean {
+  return !!process.env.DOCKER_HOST;
+}
+
+// =====================================================================
 // Public Interfaces
 // =====================================================================
 
@@ -143,7 +168,7 @@ export function buildRunArgs(options: DockerRunOptions): string[] {
  * @yields {BuildEvent} Progress events including individual log lines
  */
 export async function* buildImage(options: DockerBuildOptions): AsyncGenerator<BuildEvent> {
-  const args = buildBuildArgs(options);
+  const args = dockerArgs(buildBuildArgs(options));
   const startTime = Date.now();
 
   yield { type: 'build_start', image: options.imageName, timestamp: Date.now() };
@@ -223,7 +248,7 @@ export const buildImageStreaming = buildImage;
  * @throws {Error} If `docker run` fails
  */
 export async function startContainer(options: DockerRunOptions): Promise<string> {
-  const args = buildRunArgs(options);
+  const args = dockerArgs(buildRunArgs(options));
 
   try {
     const { stdout } = await execFileAsync('docker', args, {
@@ -294,7 +319,7 @@ export async function isContainerRunning(name: string): Promise<boolean> {
  */
 export async function getContainerLogs(name: string, lines = 100): Promise<string> {
   try {
-    const { stdout } = await execFileAsync('docker', ['logs', `--tail=${lines}`, name], {
+    const { stdout } = await execFileAsync('docker', dockerArgs(['logs', `--tail=${lines}`, name]), {
       encoding: 'utf-8',
       timeout: 10_000,
     });
@@ -316,7 +341,7 @@ export async function getContainerLogs(name: string, lines = 100): Promise<strin
  */
 export async function execInContainer(name: string, command: string): Promise<string> {
   try {
-    const { stdout } = await execFileAsync('docker', ['exec', name, 'sh', '-c', command], {
+    const { stdout } = await execFileAsync('docker', dockerArgs(['exec', name, 'sh', '-c', command]), {
       encoding: 'utf-8',
       timeout: 15_000,
     });
@@ -473,7 +498,7 @@ export async function* streamContainerLogs(
   let done = false;
   let resolveWait: (() => void) | null = null;
 
-  const proc = spawn('docker', ['logs', '-f', '--tail', String(lines), name], {
+  const proc = spawn('docker', dockerArgs(['logs', '-f', '--tail', String(lines), name]), {
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 
@@ -525,11 +550,12 @@ export async function* streamContainerLogs(
 
 /**
  * Async safe execution — returns output or empty string on failure.
- * Avoids shell injection by using execFile (no shell interpretation).
+ * Automatically prepends DOCKER_HOST args when bin is 'docker'.
  */
 async function safeExecFileAsync(bin: string, args: string[], opts?: { cwd?: string }): Promise<string> {
   try {
-    const { stdout } = await execFileAsync(bin, args, {
+    const finalArgs = bin === 'docker' ? dockerArgs(args) : args;
+    const { stdout } = await execFileAsync(bin, finalArgs, {
       encoding: 'utf-8',
       cwd: opts?.cwd,
       timeout: 10_000,

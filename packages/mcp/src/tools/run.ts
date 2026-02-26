@@ -1,6 +1,6 @@
 /**
  * @module tools/run
- * preflight_run + preflight_run_suite — Execute test suites.
+ * argus_run + argus_run_suite — Execute test suites.
  */
 
 import path from 'node:path';
@@ -11,9 +11,10 @@ import {
   type TestEvent,
   type TestSuiteConfig,
   type AIFriendlyTestResult,
-} from '@preflight/core';
+} from 'argusai-core';
 import { SessionManager, SessionError } from '../session.js';
 import type { ResultFormatter } from '../formatters/result-formatter.js';
+import type { PlatformServices } from '../server.js';
 
 export interface RunResult {
   status: 'passed' | 'failed';
@@ -32,7 +33,7 @@ export interface RunResult {
 }
 
 /**
- * Handle the preflight_run MCP tool call.
+ * Handle the argus_run MCP tool call.
  * Executes all (or filtered) test suites and returns AI-friendly results.
  *
  * @param params - Tool input with projectPath, optional suite filter and parallel override
@@ -45,11 +46,12 @@ export async function handleRun(
   params: { projectPath: string; filter?: string; parallel?: boolean },
   sessionManager: SessionManager,
   formatter: ResultFormatter,
+  platform?: PlatformServices,
 ): Promise<RunResult> {
   const session = sessionManager.getOrThrow(params.projectPath);
 
   if (session.state !== 'running') {
-    throw new SessionError('NOT_RUNNING', 'Environment not set up. Call preflight_setup first.');
+    throw new SessionError('NOT_RUNNING', 'Environment not set up. Call argus_setup first.');
   }
 
   const config = session.config;
@@ -72,11 +74,11 @@ export async function handleRun(
     }
   }
 
-  return executeSuites(suites, session, formatter);
+  return executeSuites(suites, session, formatter, sessionManager.eventBus, platform);
 }
 
 /**
- * Handle the preflight_run_suite MCP tool call.
+ * Handle the argus_run_suite MCP tool call.
  * Executes a single test suite by ID and returns AI-friendly results.
  *
  * @param params - Tool input with projectPath and suiteId
@@ -89,11 +91,12 @@ export async function handleRunSuite(
   params: { projectPath: string; suiteId: string },
   sessionManager: SessionManager,
   formatter: ResultFormatter,
+  platform?: PlatformServices,
 ): Promise<RunResult> {
   const session = sessionManager.getOrThrow(params.projectPath);
 
   if (session.state !== 'running') {
-    throw new SessionError('NOT_RUNNING', 'Environment not set up. Call preflight_setup first.');
+    throw new SessionError('NOT_RUNNING', 'Environment not set up. Call argus_setup first.');
   }
 
   const config = session.config;
@@ -105,19 +108,26 @@ export async function handleRunSuite(
     throw new SessionError('SUITE_NOT_FOUND', `Suite "${params.suiteId}" not found in configuration`);
   }
 
-  return executeSuites(suites, session, formatter);
+  return executeSuites(suites, session, formatter, sessionManager.eventBus, platform);
 }
 
 async function executeSuites(
   suites: TestSuiteConfig[],
   session: import('../session.js').ProjectSession,
   formatter: ResultFormatter,
+  bus?: import('argusai-core').SSEBus,
+  platform?: PlatformServices,
 ): Promise<RunResult> {
   const totalStart = Date.now();
   const suiteResults: RunResult['suites'] = [];
   let totalPassed = 0;
   let totalFailed = 0;
   let totalSkipped = 0;
+
+  bus?.emit('activity', {
+    event: 'activity_start',
+    data: { id: `run-${totalStart}`, source: 'ai', operation: 'run', project: session.config.project.name, status: 'running', startTime: totalStart },
+  });
 
   const containerName = getContainerName(session.config);
   const baseUrl = getBaseUrl(session.config);
@@ -137,6 +147,7 @@ async function executeSuites(
           containerName,
         })) {
           events.push(event);
+          bus?.emit('test', { event: event.type, data: event });
         }
       }
     } else {
@@ -152,6 +163,7 @@ async function executeSuites(
           timeout: 300_000,
         })) {
           events.push(event);
+          bus?.emit('test', { event: event.type, data: event });
         }
       }
     }
@@ -185,22 +197,59 @@ async function executeSuites(
 
   const total = totalPassed + totalFailed + totalSkipped;
 
-  return {
+  const totalDuration = Date.now() - totalStart;
+  bus?.emit('activity', {
+    event: 'activity_update',
+    data: { id: `run-${totalStart}`, source: 'ai', operation: 'run', project: session.config.project.name, status: totalFailed > 0 ? 'failed' : 'success', startTime: totalStart, endTime: Date.now() },
+  });
+
+  const runResult: RunResult = {
     status: totalFailed > 0 ? 'failed' : 'passed',
     totals: { passed: totalPassed, failed: totalFailed, skipped: totalSkipped, total },
-    duration: Date.now() - totalStart,
+    duration: totalDuration,
     suites: suiteResults,
   };
+
+  // Persist test records
+  if (platform?.store) {
+    for (const sr of suiteResults) {
+      platform.store.saveTestRecord({
+        id: `test-${totalStart}-${sr.id}`,
+        project: session.projectPath,
+        suite: sr.name,
+        status: sr.failed > 0 ? 'failed' : sr.skipped === (sr.passed + sr.failed + sr.skipped) ? 'skipped' : 'passed',
+        passed: sr.passed,
+        failed: sr.failed,
+        skipped: sr.skipped,
+        duration: sr.duration,
+        timestamp: totalStart,
+        source: 'ai',
+        error: sr.cases.find(c => c.status === 'failed')?.failure?.error,
+      }).catch(() => {});
+    }
+  }
+
+  // Notify on failure
+  if (totalFailed > 0 && platform?.notifier) {
+    const failedSuites = suiteResults.filter(s => s.status === 'failed').map(s => s.name);
+    platform.notifier.notifyTestFailure(
+      session.projectPath,
+      failedSuites.join(', '),
+      `${totalFailed} test(s) failed in: ${failedSuites.join(', ')}`,
+    ).catch(() => {});
+  }
+
+  return runResult;
 }
 
-function getContainerName(config: import('@preflight/core').E2EConfig): string | undefined {
+function getContainerName(config: import('argusai-core').E2EConfig): string | undefined {
   if (config.services && config.services.length > 0) {
     return config.services[0]!.container.name;
   }
   return config.service?.container.name;
 }
 
-function getBaseUrl(config: import('@preflight/core').E2EConfig): string {
+function getBaseUrl(config: import('argusai-core').E2EConfig): string {
   const svc = config.services?.[0] ?? config.service;
   if (!svc) return 'http://localhost:3000';
 

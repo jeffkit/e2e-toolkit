@@ -8,7 +8,7 @@ import { type FastifyPluginAsync } from 'fastify';
 import fs from 'fs';
 import path from 'path';
 import yaml from 'js-yaml';
-import { loadConfig } from '@preflight/core';
+import { loadConfig } from 'argusai-core';
 import {
   loadRegistry,
   addProject,

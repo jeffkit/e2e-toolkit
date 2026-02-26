@@ -1,6 +1,6 @@
 /**
- * Unit tests for preflight_status, preflight_logs, preflight_clean,
- * and preflight_mock_requests tool handlers.
+ * Unit tests for argus_status, argus_logs, argus_clean,
+ * and argus_mock_requests tool handlers.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -9,9 +9,9 @@ import { handleStatus } from '../../../src/tools/status.js';
 import { handleLogs } from '../../../src/tools/logs.js';
 import { handleClean } from '../../../src/tools/clean.js';
 import { handleMockRequests } from '../../../src/tools/mock-requests.js';
-import type { E2EConfig } from '@preflight/core';
+import type { E2EConfig } from 'argusai-core';
 
-vi.mock('@preflight/core', async (importOriginal) => {
+vi.mock('argusai-core', async (importOriginal) => {
   const orig = await importOriginal() as Record<string, unknown>;
   return {
     ...orig,

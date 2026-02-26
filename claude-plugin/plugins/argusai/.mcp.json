@@ -1,0 +1,8 @@
+{
+  "argusai": {
+    "type": "stdio",
+    "command": "npx",
+    "args": ["argusai-mcp"],
+    "env": {}
+  }
+}

@@ -49,7 +49,7 @@ export function registerStatus(program: Command): void {
         loadConfig,
         getContainerStatus,
         isPortInUse,
-      } = await import('@preflight/core');
+      } = await import('argusai-core');
 
       const configPath = program.opts().config as string | undefined;
 

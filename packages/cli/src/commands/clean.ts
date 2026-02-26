@@ -29,7 +29,7 @@ export function registerClean(program: Command): void {
         loadConfig,
         stopContainer,
         removeNetwork,
-      } = await import('@preflight/core');
+      } = await import('argusai-core');
 
       const configPath = program.opts().config as string | undefined;
 

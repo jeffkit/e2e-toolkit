@@ -1,7 +1,26 @@
 {
-  "name": "@preflight/dashboard",
+  "name": "argusai-dashboard",
   "version": "0.1.0",
   "type": "module",
+  "description": "ArgusAI Dashboard — real-time web UI for monitoring AI-driven E2E test pipelines",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jeffkit/preflight.git",
+    "directory": "packages/dashboard"
+  },
+  "keywords": ["argusai", "dashboard", "testing", "monitoring", "ai"],
+  "files": ["dist/", "README.md"],
+  "exports": {
+    ".": {
+      "import": "./dist/server/index.js",
+      "types": "./dist/server/index.d.ts"
+    },
+    "./server": {
+      "import": "./dist/server/index.js",
+      "types": "./dist/server/index.d.ts"
+    }
+  },
   "scripts": {
     "dev": "concurrently -n server,ui -c blue,green \"tsx watch server/index.ts\" \"vite\"",
     "dev:server": "tsx watch server/index.ts",
@@ -13,7 +32,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@preflight/core": "workspace:*",
+    "argusai-core": "workspace:*",
     "@fastify/cors": "^10.0.0",
     "@fastify/static": "^8.3.0",
     "fastify": "^5.0.0",

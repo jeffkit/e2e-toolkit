@@ -1,11 +1,11 @@
 /**
  * @module tools/init
- * preflight_init — Initialize a project session by loading e2e.yaml.
+ * argus_init — Initialize a project session by loading e2e.yaml.
  */
 
 import path from 'node:path';
-import { loadConfig } from '@preflight/core';
-import type { E2EConfig, ServiceConfig, ServiceDefinition, MockServiceConfig, TestSuiteConfig } from '@preflight/core';
+import { loadConfig } from 'argusai-core';
+import type { E2EConfig, ServiceConfig, ServiceDefinition, MockServiceConfig, TestSuiteConfig } from 'argusai-core';
 import { SessionManager, SessionError } from '../session.js';
 
 export interface InitResult {
@@ -55,7 +55,7 @@ function extractServices(config: E2EConfig): InitResult['services'] {
 }
 
 /**
- * Handle the preflight_init MCP tool call.
+ * Handle the argus_init MCP tool call.
  * Loads the project e2e.yaml config and creates a new session.
  *
  * @param params - Tool input with projectPath and optional configFile override
@@ -91,6 +91,11 @@ export async function handleInit(
   }
 
   sessionManager.create(projectPath, config, configPath);
+
+  sessionManager.eventBus?.emit('activity', {
+    event: 'activity_start',
+    data: { id: `init-${Date.now()}`, source: 'ai', operation: 'init', project: config.project.name, status: 'success', startTime: Date.now(), endTime: Date.now() },
+  });
 
   const services = extractServices(config);
 

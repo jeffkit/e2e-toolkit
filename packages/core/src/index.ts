@@ -1,4 +1,4 @@
-// @preflight/core - 核心引擎
+// argusai-core - 核心引擎
 
 // Types
 export * from './types.js';
@@ -49,6 +49,7 @@ export {
   buildRunArgs,
 } from './docker-engine.js';
 export type { DockerBuildOptions, DockerRunOptions } from './docker-engine.js';
+export { getDockerHostArgs, isDockerRemote } from './docker-engine.js';
 
 // YAML Engine
 export {
@@ -110,6 +111,63 @@ export { createMockServer, resolveResponseTemplate } from './mock-generator.js';
 
 // SSE Bus
 export { EventBus, createEventBus } from './sse-bus.js';
+export type { PreflightEvent, PreflightChannel, SetupEvent, CleanEvent, ActivityEntry } from './types.js';
+
+// Resource Limiter
+export {
+  Semaphore,
+  ResourceLimiter,
+  buildResourceArgs,
+} from './resource-limiter.js';
+export type {
+  ResourceLimits,
+  ProjectResourceState,
+  ResourceLimiterOptions,
+} from './resource-limiter.js';
+
+// Runtime (container execution abstraction)
+export {
+  DockerRuntime,
+  KubernetesRuntime,
+  createRuntime,
+} from './runtime.js';
+export type {
+  ContainerRuntime,
+  RuntimeBuildOptions,
+  RuntimeRunOptions,
+  RuntimeExecResult,
+  RuntimeType,
+  RuntimeConfig,
+  K8sRuntimeOptions,
+} from './runtime.js';
+
+// Notifier
+export {
+  Notifier,
+  ConsoleNotifier,
+  WebhookNotifier,
+  createNotifier,
+} from './notifier.js';
+export type {
+  Notification,
+  NotificationLevel,
+  NotificationChannel,
+  NotifierOptions,
+  NotifierConfig,
+  WebhookNotifierOptions,
+} from './notifier.js';
+
+// Task Queue
+export { TaskQueue } from './task-queue.js';
+export type { TaskEntry, TaskQueueOptions, TaskQueueEvent, QueueStats, TaskStatus, TaskFn } from './task-queue.js';
+
+// Store (persistence layer)
+export {
+  MemoryStore,
+  FileStore,
+  createStore,
+} from './store.js';
+export type { Store, StoreOptions, TestRecord, BuildRecord, ActivityRecord } from './store.js';
 
 // Reporter
 export { ConsoleReporter, JSONReporter, HTMLReporter } from './reporter.js';

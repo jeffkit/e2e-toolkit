@@ -26,7 +26,7 @@ export function registerBuild(program: Command): void {
         loadConfig,
         buildImageStreaming,
         buildBuildArgs,
-      } = await import('@preflight/core');
+      } = await import('argusai-core');
 
       const configPath = program.opts().config as string | undefined;
 

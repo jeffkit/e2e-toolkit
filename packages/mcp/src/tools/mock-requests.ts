@@ -1,6 +1,6 @@
 /**
  * @module tools/mock-requests
- * preflight_mock_requests — Get recorded requests from mock services.
+ * argus_mock_requests — Get recorded requests from mock services.
  */
 
 import { SessionManager, SessionError } from '../session.js';
@@ -32,7 +32,7 @@ interface MockRequestData {
 }
 
 /**
- * Handle the preflight_mock_requests MCP tool call.
+ * Handle the argus_mock_requests MCP tool call.
  * Fetches recorded HTTP requests from mock service endpoints.
  * Optionally filters by mock name, time range, and clears request logs.
  *

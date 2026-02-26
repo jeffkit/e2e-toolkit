@@ -3,7 +3,7 @@
  * Git workspace 管理器
  *
  * 管理远程和本地 Git 仓库的 clone、fetch、checkout 操作。
- * 远程仓库被 clone 到 `~/.preflight/workspaces/<project>/` 目录下。
+ * 远程仓库被 clone 到 `~/.argusai/workspaces/<project>/` 目录下。
  */
 
 import { execSync, type ExecSyncOptionsWithBufferEncoding } from 'node:child_process';
@@ -14,7 +14,7 @@ import type { RepoConfig } from './types.js';
 
 // ─── Constants ───────────────────────────────────────────────
 
-const TOOLKIT_DIR = path.join(os.homedir(), '.preflight');
+const TOOLKIT_DIR = path.join(os.homedir(), '.argusai');
 const WORKSPACES_DIR = path.join(TOOLKIT_DIR, 'workspaces');
 
 // ─── Types ───────────────────────────────────────────────────

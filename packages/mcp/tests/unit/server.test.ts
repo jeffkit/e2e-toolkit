@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createServer } from '../../src/server.js';
 
-vi.mock('@preflight/core', () => ({
+vi.mock('argusai-core', () => ({
   loadConfig: vi.fn(),
   buildImage: vi.fn(),
   startContainer: vi.fn(),

@@ -1,13 +1,13 @@
 /**
  * @module tools/status
- * preflight_status — Get current status of all managed resources.
+ * argus_status — Get current status of all managed resources.
  */
 
 import {
   getContainerStatus,
   isPortInUse,
   type ContainerStatus,
-} from '@preflight/core';
+} from 'argusai-core';
 import { SessionManager } from '../session.js';
 
 export interface StatusResult {
@@ -30,7 +30,7 @@ export interface StatusResult {
 }
 
 /**
- * Handle the preflight_status MCP tool call.
+ * Handle the argus_status MCP tool call.
  * Queries live status of containers, network, and mock services.
  *
  * @param params - Tool input with projectPath

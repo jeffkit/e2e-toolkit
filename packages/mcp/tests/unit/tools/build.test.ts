@@ -1,13 +1,13 @@
 /**
- * Unit tests for preflight_build tool handler.
+ * Unit tests for argus_build tool handler.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SessionManager, SessionError } from '../../../src/session.js';
 import { handleBuild } from '../../../src/tools/build.js';
-import type { E2EConfig } from '@preflight/core';
+import type { E2EConfig } from 'argusai-core';
 
-vi.mock('@preflight/core', async (importOriginal) => {
+vi.mock('argusai-core', async (importOriginal) => {
   const orig = await importOriginal() as Record<string, unknown>;
   return {
     ...orig,
@@ -15,7 +15,7 @@ vi.mock('@preflight/core', async (importOriginal) => {
   };
 });
 
-const { buildImage } = await import('@preflight/core');
+const { buildImage } = await import('argusai-core');
 
 function setupSession(manager: SessionManager, projectPath = '/test/project'): void {
   const config: E2EConfig = {

@@ -1,0 +1,24 @@
+{
+  "name": "argusai",
+  "version": "0.1.0",
+  "description": "ArgusAI E2E testing plugin — MCP tools + skills for AI agents to run Docker-based end-to-end tests with YAML-driven test suites, mock services, and multi-runner support.",
+  "author": {
+    "name": "jeff kit",
+    "email": "bbmyth@gmail.com"
+  },
+  "repository": "https://github.com/jeffkit/infra4agent",
+  "license": "MIT",
+  "keywords": [
+    "argusai",
+    "e2e",
+    "testing",
+    "docker",
+    "mcp",
+    "ai",
+    "automation",
+    "acceptance-testing",
+    "yaml",
+    "mock"
+  ],
+  "mcpServers": "./.mcp.json"
+}

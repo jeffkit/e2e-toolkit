@@ -33,7 +33,7 @@ export function registerRun(program: Command): void {
         createDefaultRegistry,
         ConsoleReporter,
         JSONReporter,
-      } = await import('@preflight/core');
+      } = await import('argusai-core');
 
       const configPath = program.opts().config as string | undefined;
 

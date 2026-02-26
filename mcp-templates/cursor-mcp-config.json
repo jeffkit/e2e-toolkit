@@ -1,9 +1,9 @@
 {
   "mcpServers": {
-    "preflight": {
+    "argusai": {
       "command": "node",
       "args": [
-        "<ABSOLUTE_PATH_TO_PREFLIGHT>/packages/mcp/dist/index.js"
+        "<ABSOLUTE_PATH_TO_ARGUSAI>/packages/mcp/dist/index.js"
       ],
       "env": {}
     }

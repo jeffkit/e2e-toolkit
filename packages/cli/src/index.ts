@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * @module @preflight/cli
- * CLI entry point for preflight.
+ * @module argusai
+ * CLI entry point for ArgusAI.
  *
  * Registers all sub-commands and parses process.argv via Commander.js.
  */
@@ -16,12 +16,13 @@ import { registerClean } from './commands/clean.js';
 import { registerDashboard } from './commands/dashboard.js';
 import { registerLogs } from './commands/logs.js';
 import { registerMcpServer } from './commands/mcp-server.js';
+import { registerServer } from './commands/server.js';
 
 export function createProgram(): Command {
   const program = new Command();
 
   program
-    .name('preflight')
+    .name('argusai')
     .description('配置驱动的 Docker 容器端到端测试平台')
     .version('0.1.0')
     .option('-c, --config <path>', 'e2e.yaml 配置文件路径')
@@ -37,6 +38,7 @@ export function createProgram(): Command {
   registerDashboard(program);
   registerLogs(program);
   registerMcpServer(program);
+  registerServer(program);
 
   return program;
 }

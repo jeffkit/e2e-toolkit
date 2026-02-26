@@ -1,7 +1,7 @@
 /**
  * 项目注册表管理器
  *
- * 在 ~/.preflight/projects.json 中存储已注册的 E2E 项目。
+ * 在 ~/.argusai/projects.json 中存储已注册的 E2E 项目。
  * 支持多项目管理和切换。
  */
 
@@ -21,7 +21,7 @@ export interface ProjectRegistry {
   projects: ProjectEntry[];
 }
 
-const REGISTRY_DIR = path.join(os.homedir(), '.preflight');
+const REGISTRY_DIR = path.join(os.homedir(), '.argusai');
 const REGISTRY_FILE = path.join(REGISTRY_DIR, 'projects.json');
 
 function ensureDir() {

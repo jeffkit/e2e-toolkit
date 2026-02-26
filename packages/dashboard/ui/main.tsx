@@ -7,12 +7,14 @@ import { LogsPage } from './pages/Logs'
 import { ApiExplorer } from './pages/ApiExplorer'
 import { TestsPage } from './pages/Tests'
 import { ProjectsPage } from './pages/Projects'
+import { ActivityPage } from './pages/Activity'
+import { PipelinePage } from './pages/Pipeline'
 import { health, projects, type ProjectEntry } from './lib/api'
 
-type Page = 'projects' | 'build' | 'container' | 'logs' | 'api' | 'tests'
+type Page = 'activity' | 'pipeline' | 'projects' | 'build' | 'container' | 'logs' | 'api' | 'tests'
 
 function App() {
-  const [page, setPage] = useState<Page>('build')
+  const [page, setPage] = useState<Page>('activity')
   const [projectName, setProjectName] = useState('')
   const [projectVersion, setProjectVersion] = useState('')
 
@@ -60,6 +62,8 @@ function App() {
   }, [loadInfo])
 
   const pages: Record<Page, { label: string; icon: string; component: React.ReactNode }> = {
+    activity: { label: '活动时间线', icon: '⏱', component: <ActivityPage key={refreshKey} /> },
+    pipeline: { label: '流水线', icon: '▶', component: <PipelinePage key={refreshKey} /> },
     projects: {
       label: '项目管理',
       icon: '📂',

@@ -1,15 +1,15 @@
 /**
- * Unit tests for preflight_run and preflight_run_suite tool handlers.
+ * Unit tests for argus_run and argus_run_suite tool handlers.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SessionManager, SessionError } from '../../../src/session.js';
 import { handleRun, handleRunSuite } from '../../../src/tools/run.js';
 import { ResultFormatter } from '../../../src/formatters/result-formatter.js';
-import type { E2EConfig } from '@preflight/core';
-import type { TestEvent } from '@preflight/core';
+import type { E2EConfig } from 'argusai-core';
+import type { TestEvent } from 'argusai-core';
 
-vi.mock('@preflight/core', async (importOriginal) => {
+vi.mock('argusai-core', async (importOriginal) => {
   const orig = await importOriginal() as Record<string, unknown>;
   return {
     ...orig,
@@ -22,7 +22,7 @@ vi.mock('@preflight/core', async (importOriginal) => {
   };
 });
 
-const { executeYAMLSuite } = await import('@preflight/core');
+const { executeYAMLSuite } = await import('argusai-core');
 
 function createRunningSession(manager: SessionManager, projectPath = '/test/project'): void {
   const config: E2EConfig = {

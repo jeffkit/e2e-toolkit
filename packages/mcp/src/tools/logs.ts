@@ -1,13 +1,13 @@
 /**
  * @module tools/logs
- * preflight_logs — Get recent logs from a container.
+ * argus_logs — Get recent logs from a container.
  */
 
 import {
   getContainerLogs,
   getContainerStatus,
   type ContainerStatus,
-} from '@preflight/core';
+} from 'argusai-core';
 import { SessionManager, SessionError } from '../session.js';
 
 export interface LogsResult {
@@ -18,7 +18,7 @@ export interface LogsResult {
 }
 
 /**
- * Handle the preflight_logs MCP tool call.
+ * Handle the argus_logs MCP tool call.
  * Retrieves recent log output from a specific container.
  *
  * @param params - Tool input with projectPath, container name, and optional line count / since filter

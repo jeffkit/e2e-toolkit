@@ -6,7 +6,7 @@
  */
 
 import { type FastifyPluginAsync } from 'fastify';
-import type { E2EConfig } from '@preflight/core';
+import type { E2EConfig } from 'argusai-core';
 import { getAppState } from '../app-state.js';
 
 export const configRoutes: FastifyPluginAsync = async (app) => {

@@ -1,6 +1,6 @@
 /**
  * @module tools/clean
- * preflight_clean — Stop and remove all containers, networks, and mocks.
+ * argus_clean — Stop and remove all containers, networks, and mocks.
  *
  * Uses MultiServiceOrchestrator for config normalization, while keeping
  * Docker calls at this level for testability.
@@ -10,7 +10,7 @@ import {
   stopContainer,
   removeNetwork,
   MultiServiceOrchestrator,
-} from '@preflight/core';
+} from 'argusai-core';
 import { SessionManager, SessionError } from '../session.js';
 
 export interface CleanResult {
@@ -33,7 +33,7 @@ export interface CleanResult {
 }
 
 /**
- * Handle the preflight_clean MCP tool call.
+ * Handle the argus_clean MCP tool call.
  * Stops containers, shuts down mock servers, removes the Docker network,
  * and destroys the session. Uses best-effort cleanup for all resources.
  *
@@ -63,7 +63,14 @@ export async function handleClean(
     throw err;
   }
 
-  // Use orchestrator to normalize services from config
+  const bus = sessionManager.eventBus;
+  const cleanStart = Date.now();
+  bus?.emit('clean', { event: 'clean_start', data: { type: 'clean_start', project: session.config.project.name, timestamp: cleanStart } });
+  bus?.emit('activity', {
+    event: 'activity_start',
+    data: { id: `clean-${cleanStart}`, source: 'ai', operation: 'clean', project: session.config.project.name, status: 'running', startTime: cleanStart },
+  });
+
   const orchestrator = new MultiServiceOrchestrator();
   const services = orchestrator.normalizeServices(session.config);
 
@@ -80,7 +87,9 @@ export async function handleClean(
   const containerResults: CleanResult['containers'] = [];
   for (const name of containerNames) {
     try {
+      bus?.emit('clean', { event: 'container_removing', data: { type: 'container_removing', name, timestamp: Date.now() } });
       await stopContainer(name);
+      bus?.emit('clean', { event: 'container_removed', data: { type: 'container_removed', name, timestamp: Date.now() } });
       containerResults.push({ name, action: 'removed' });
     } catch (err) {
       containerResults.push({
@@ -96,6 +105,7 @@ export async function handleClean(
   for (const [name, mockInfo] of session.mockServers) {
     try {
       await mockInfo.server.close();
+      bus?.emit('clean', { event: 'mock_stopped', data: { type: 'mock_stopped', name, timestamp: Date.now() } });
       mockResults.push({ name, action: 'stopped' });
     } catch (err) {
       mockResults.push({
@@ -110,12 +120,19 @@ export async function handleClean(
   let networkResult: CleanResult['network'];
   try {
     await removeNetwork(networkName);
+    bus?.emit('clean', { event: 'network_removed', data: { type: 'network_removed', name: networkName, timestamp: Date.now() } });
     networkResult = { name: networkName, action: 'removed' };
   } catch {
     networkResult = { name: networkName, action: 'failed' };
   }
 
-  // Remove session
+  const cleanDuration = Date.now() - cleanStart;
+  bus?.emit('clean', { event: 'clean_end', data: { type: 'clean_end', duration: cleanDuration, timestamp: Date.now() } });
+  bus?.emit('activity', {
+    event: 'activity_update',
+    data: { id: `clean-${cleanStart}`, source: 'ai', operation: 'clean', project: session.config.project.name, status: 'success', startTime: cleanStart, endTime: Date.now() },
+  });
+
   sessionManager.remove(params.projectPath);
 
   return {

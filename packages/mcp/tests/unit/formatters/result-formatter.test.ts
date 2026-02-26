@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { ResultFormatter, generateSummary } from '../../../src/formatters/result-formatter.js';
-import type { TestEvent, TestReport } from '@preflight/core';
+import type { TestEvent, TestReport } from 'argusai-core';
 
 describe('ResultFormatter', () => {
   const formatter = new ResultFormatter();

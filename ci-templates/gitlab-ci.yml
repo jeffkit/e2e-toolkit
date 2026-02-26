@@ -1,4 +1,4 @@
-# Preflight E2E Testing — GitLab CI Template
+# ArgusAI E2E Testing — GitLab CI Template
 #
 # Usage: Include this template in your .gitlab-ci.yml:
 #   include:
@@ -22,7 +22,7 @@ stages:
   - test
   - cleanup
 
-.preflight_base:
+.argusai_base:
   image: node:${NODE_VERSION}
   before_script:
     - corepack enable
@@ -35,8 +35,8 @@ stages:
       - .pnpm-store/
     policy: pull
 
-preflight:install:
-  extends: .preflight_base
+argusai:install:
+  extends: .argusai_base
   stage: install
   cache:
     policy: pull-push
@@ -44,8 +44,8 @@ preflight:install:
     - pnpm config set store-dir .pnpm-store
     - pnpm install --frozen-lockfile
 
-preflight:build:
-  extends: .preflight_base
+argusai:build:
+  extends: .argusai_base
   stage: build
   services:
     - docker:dind
@@ -55,10 +55,10 @@ preflight:build:
   script:
     - pnpm install --frozen-lockfile
     - pnpm build
-    - npx preflight build -c ${PROJECT_PATH}/e2e.yaml
+    - npx argusai build -c ${PROJECT_PATH}/e2e.yaml
 
-preflight:test:
-  extends: .preflight_base
+argusai:test:
+  extends: .argusai_base
   stage: test
   services:
     - docker:dind
@@ -68,20 +68,20 @@ preflight:test:
   script:
     - pnpm install --frozen-lockfile
     - pnpm build
-    - npx preflight build -c ${PROJECT_PATH}/e2e.yaml
-    - npx preflight setup -c ${PROJECT_PATH}/e2e.yaml
+    - npx argusai build -c ${PROJECT_PATH}/e2e.yaml
+    - npx argusai setup -c ${PROJECT_PATH}/e2e.yaml
     - |
       FILTER_ARG=""
       if [ -n "${TEST_FILTER}" ]; then
         FILTER_ARG="--suite ${TEST_FILTER}"
       fi
       mkdir -p ${ARTIFACT_PATH}
-      npx preflight run -c ${PROJECT_PATH}/e2e.yaml \
+      npx argusai run -c ${PROJECT_PATH}/e2e.yaml \
         --reporter json \
         ${FILTER_ARG} \
         > ${ARTIFACT_PATH}/test-results.json
   after_script:
-    - npx preflight clean -c ${PROJECT_PATH}/e2e.yaml --force || true
+    - npx argusai clean -c ${PROJECT_PATH}/e2e.yaml --force || true
   artifacts:
     when: always
     paths:
@@ -90,8 +90,8 @@ preflight:test:
     reports:
       junit: ${ARTIFACT_PATH}/test-results.json
 
-preflight:cleanup:
-  extends: .preflight_base
+argusai:cleanup:
+  extends: .argusai_base
   stage: cleanup
   services:
     - docker:dind
@@ -103,4 +103,4 @@ preflight:cleanup:
   script:
     - pnpm install --frozen-lockfile
     - pnpm build
-    - npx preflight clean -c ${PROJECT_PATH}/e2e.yaml --force || true
+    - npx argusai clean -c ${PROJECT_PATH}/e2e.yaml --force || true

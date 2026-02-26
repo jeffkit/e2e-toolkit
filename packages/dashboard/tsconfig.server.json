@@ -9,7 +9,7 @@
     "skipLibCheck": true,
     "outDir": "dist/server",
     "rootDir": "server",
-    "declaration": false
+    "declaration": true
   },
   "include": ["server/**/*.ts"],
   "exclude": ["node_modules", "dist"]

@@ -1,17 +1,17 @@
-# Preflight E2E Testing — GitHub Actions Reusable Workflow Template
+# ArgusAI E2E Testing — GitHub Actions Reusable Workflow Template
 #
 # Usage: Copy this file or reference it as a reusable workflow.
-# Runs the full Preflight lifecycle: build → setup → run → clean.
+# Runs the full ArgusAI lifecycle: build → setup → run → clean.
 #
 # Example:
 #   jobs:
 #     e2e:
-#       uses: ./.github/workflows/preflight-e2e.yml
+#       uses: ./.github/workflows/argusai-e2e.yml
 #       with:
 #         project_path: examples/as-mate
 #         test_filter: health,api
 
-name: Preflight E2E Tests
+name: ArgusAI E2E Tests
 
 on:
   workflow_call:
@@ -78,19 +78,19 @@ jobs:
       - name: Build project
         run: pnpm build
 
-      - name: Preflight — Build Docker images
-        run: npx preflight build -c ${{ inputs.project_path }}/e2e.yaml
+      - name: ArgusAI — Build Docker images
+        run: npx argusai build -c ${{ inputs.project_path }}/e2e.yaml
 
-      - name: Preflight — Setup environment
-        run: npx preflight setup -c ${{ inputs.project_path }}/e2e.yaml
+      - name: ArgusAI — Setup environment
+        run: npx argusai setup -c ${{ inputs.project_path }}/e2e.yaml
 
-      - name: Preflight — Run tests
+      - name: ArgusAI — Run tests
         run: |
           FILTER_ARG=""
           if [ -n "${{ inputs.test_filter }}" ]; then
             FILTER_ARG="--suite ${{ inputs.test_filter }}"
           fi
-          npx preflight run -c ${{ inputs.project_path }}/e2e.yaml \
+          npx argusai run -c ${{ inputs.project_path }}/e2e.yaml \
             --reporter json \
             $FILTER_ARG \
             > ${{ inputs.artifact_path }}/test-results.json
@@ -99,10 +99,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: preflight-test-results
+          name: argusai-test-results
           path: ${{ inputs.artifact_path }}/test-results.json
           retention-days: 30
 
-      - name: Preflight — Clean environment
+      - name: ArgusAI — Clean environment
         if: always()
-        run: npx preflight clean -c ${{ inputs.project_path }}/e2e.yaml --force
+        run: npx argusai clean -c ${{ inputs.project_path }}/e2e.yaml --force

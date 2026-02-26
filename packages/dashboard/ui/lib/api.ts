@@ -363,3 +363,21 @@ export const projects = {
       templates: Record<string, Record<string, unknown>>;
     }>('/projects/schema'),
 };
+
+// ==================== Activities ====================
+
+export interface ActivityEntry {
+  id: string;
+  source: 'ai' | 'manual' | 'system';
+  operation: string;
+  project: string;
+  status: 'running' | 'success' | 'failed';
+  startTime: number;
+  endTime?: number;
+  detail?: string;
+}
+
+export const activities = {
+  list: (limit = 50) =>
+    request<{ activities: ActivityEntry[] }>(`/activities?limit=${limit}`),
+};

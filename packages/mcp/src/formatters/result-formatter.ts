@@ -13,7 +13,7 @@ import type {
   DiagnosticReport,
   TestReport,
   SuiteReport,
-} from '@preflight/core';
+} from 'argusai-core';
 
 /**
  * Converts raw test engine output into the structured AIFriendlyTestResult format
