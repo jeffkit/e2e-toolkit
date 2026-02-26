@@ -6,6 +6,7 @@ on:
     paths:
       - '.changeset/**'
       - 'packages/**'
+      - '.github/workflows/release.yml'
   workflow_dispatch:
 
 concurrency:
