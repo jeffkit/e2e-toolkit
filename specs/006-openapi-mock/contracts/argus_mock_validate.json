@@ -1,0 +1,153 @@
+{
+  "name": "argus_mock_validate",
+  "description": "Compare the current mock configuration in e2e.yaml against an OpenAPI spec and report endpoint coverage. Lists which spec endpoints are covered by mock routes, which are missing, and which mock routes are extra (not in the spec).",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "projectPath": {
+        "type": "string",
+        "description": "Absolute path to project directory containing e2e.yaml"
+      },
+      "mockName": {
+        "type": "string",
+        "description": "Name of the mock service in e2e.yaml to validate. If omitted, validates all mocks that have an openapi field."
+      },
+      "specPath": {
+        "type": "string",
+        "description": "Override: path to OpenAPI spec file. If omitted, uses the openapi field from the mock config."
+      }
+    },
+    "required": ["projectPath"]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "success": { "type": "boolean" },
+      "data": {
+        "type": "object",
+        "properties": {
+          "totalSpecEndpoints": {
+            "type": "number",
+            "description": "Total number of path+method combinations in the OpenAPI spec"
+          },
+          "coveredCount": {
+            "type": "number",
+            "description": "Number of spec endpoints covered by mock routes or auto-generation"
+          },
+          "missingCount": {
+            "type": "number",
+            "description": "Number of spec endpoints not covered"
+          },
+          "coveragePercent": {
+            "type": "number",
+            "description": "Coverage percentage (0-100)"
+          },
+          "covered": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "method": { "type": "string" },
+                "path": { "type": "string" }
+              }
+            },
+            "description": "List of spec endpoints that have matching mock routes"
+          },
+          "missing": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "method": { "type": "string" },
+                "path": { "type": "string" }
+              }
+            },
+            "description": "List of spec endpoints with no matching mock route"
+          },
+          "extra": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "method": { "type": "string" },
+                "path": { "type": "string" }
+              }
+            },
+            "description": "Mock routes that do not correspond to any spec endpoint"
+          }
+        }
+      },
+      "timestamp": { "type": "number" }
+    }
+  },
+  "examples": [
+    {
+      "description": "Validate a mock with full coverage",
+      "input": {
+        "projectPath": "/home/dev/my-project",
+        "mockName": "payment-api"
+      },
+      "output": {
+        "success": true,
+        "data": {
+          "totalSpecEndpoints": 8,
+          "coveredCount": 8,
+          "missingCount": 0,
+          "coveragePercent": 100,
+          "covered": [
+            { "method": "GET", "path": "/api/balance" },
+            { "method": "POST", "path": "/api/charge" }
+          ],
+          "missing": [],
+          "extra": []
+        },
+        "timestamp": 1740672000000
+      }
+    },
+    {
+      "description": "Validate a mock with partial coverage",
+      "input": {
+        "projectPath": "/home/dev/my-project",
+        "mockName": "payment-api"
+      },
+      "output": {
+        "success": true,
+        "data": {
+          "totalSpecEndpoints": 8,
+          "coveredCount": 5,
+          "missingCount": 3,
+          "coveragePercent": 62.5,
+          "covered": [
+            { "method": "GET", "path": "/api/balance" },
+            { "method": "POST", "path": "/api/charge" }
+          ],
+          "missing": [
+            { "method": "POST", "path": "/api/refund" },
+            { "method": "GET", "path": "/api/transactions" },
+            { "method": "DELETE", "path": "/api/payment-methods/{id}" }
+          ],
+          "extra": []
+        },
+        "timestamp": 1740672000000
+      }
+    }
+  ],
+  "errors": [
+    {
+      "code": "SESSION_NOT_FOUND",
+      "description": "No active session for the project (run argus_init first)"
+    },
+    {
+      "code": "MOCK_NOT_FOUND",
+      "description": "The specified mock name does not exist in e2e.yaml"
+    },
+    {
+      "code": "NO_OPENAPI_SPEC",
+      "description": "The mock does not have an openapi field and no specPath was provided"
+    },
+    {
+      "code": "SPEC_PARSE_ERROR",
+      "description": "The OpenAPI spec file could not be parsed"
+    }
+  ]
+}

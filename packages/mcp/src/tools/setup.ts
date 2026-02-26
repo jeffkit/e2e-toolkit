@@ -166,7 +166,7 @@ export async function handleSetup(
         }
 
         bus?.emit('setup', { event: 'mock_starting', data: { type: 'mock_starting', name, port: mc.port, timestamp: ts() } });
-        const mockServer = createMockServer(mc);
+        const mockServer = await createMockServer(mc, { name, eventBus: bus });
         await mockServer.listen({ port: mc.port, host: '0.0.0.0' });
         session.mockServers.set(name, { server: mockServer, port: mc.port });
         bus?.emit('setup', { event: 'mock_started', data: { type: 'mock_started', name, port: mc.port, timestamp: ts() } });

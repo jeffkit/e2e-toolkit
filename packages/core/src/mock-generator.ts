@@ -9,7 +9,10 @@
 
 import Fastify, { type FastifyInstance, type FastifyRequest, type FastifyReply } from 'fastify';
 import crypto from 'node:crypto';
-import type { MockServiceConfig, MockRouteConfig } from './types.js';
+import type { MockServiceConfig, MockRouteConfig, SSEBus } from './types.js';
+import { loadAndDereferenceSpec } from './openapi/spec-loader.js';
+import { buildOpenAPIRoutes } from './openapi/route-builder.js';
+import type { DereferencedSpec, RequestValidatorSet, RecordingStore } from './openapi/types.js';
 
 // =====================================================================
 // Types
@@ -225,28 +228,45 @@ function registerMockRoutes(
 // Mock Server Factory
 // =====================================================================
 
+/** Options for mock server creation (used for OpenAPI features). */
+export interface CreateMockServerOptions {
+  /** Mock service name (used for SSE events and recordings) */
+  name?: string;
+  /** SSE event bus for emitting lifecycle events */
+  eventBus?: SSEBus;
+  /** Base directory for resolving relative paths (e.g. openapi spec) */
+  baseDir?: string;
+}
+
 /**
  * Create a Fastify mock server from a {@link MockServiceConfig}.
  *
  * The server includes:
  * - All configured mock routes
+ * - Auto-generated routes from OpenAPI spec (when `config.openapi` is set)
  * - `GET  /_mock/health`    – Health check
  * - `GET  /_mock/requests`  – Recorded request log
  * - `DELETE /_mock/requests` – Clear request log
  * - `GET  /_mock/routes`    – List configured routes
  *
  * @param config - Mock service configuration from e2e.yaml
+ * @param options - Optional server creation options (name, eventBus, baseDir)
  * @returns A configured (but not yet started) Fastify instance
  */
-export function createMockServer(config: MockServiceConfig): FastifyInstance {
+export async function createMockServer(
+  config: MockServiceConfig,
+  options?: CreateMockServerOptions,
+): Promise<FastifyInstance> {
   const startTime = Date.now();
   const app = Fastify({ logger: false });
   const requestLog: MockRequest[] = [];
-  const routes = config.routes ?? [];
+  const manualRoutes = config.routes ?? [];
+  const mockName = options?.name ?? 'mock';
+  let totalRouteCount = manualRoutes.length;
+  let dereferencedSpec: DereferencedSpec | undefined;
 
   // ── Request recording hook ──────────────────────────────────────────
   app.addHook('onRequest', async (request) => {
-    // Skip recording for /_mock/* helper endpoints
     if (request.url.startsWith('/_mock/')) return;
     requestLog.push({
       method: request.method,
@@ -263,7 +283,7 @@ export function createMockServer(config: MockServiceConfig): FastifyInstance {
     return {
       status: 'ok',
       uptime: (Date.now() - startTime) / 1000,
-      routeCount: routes.length,
+      routeCount: totalRouteCount,
     };
   });
 
@@ -277,12 +297,197 @@ export function createMockServer(config: MockServiceConfig): FastifyInstance {
   });
 
   app.get('/_mock/routes', async () => {
-    return { routes };
+    return { routes: manualRoutes };
   });
 
-  // ── User-defined mock routes ────────────────────────────────────────
-  if (routes.length > 0) {
-    registerMockRoutes(app, routes);
+  // ── Collect override keys for dedup ──────────────────────────────────
+  const overrideKeys = new Set<string>();
+  if (config.openapi) {
+    for (const r of config.overrides ?? []) {
+      overrideKeys.add(`${r.method.toUpperCase()}:${r.path}`);
+    }
+    for (const r of config.routes ?? []) {
+      overrideKeys.add(`${r.method.toUpperCase()}:${r.path}`);
+    }
+  }
+
+  // ── OpenAPI auto-generated routes ───────────────────────────────────
+  if (config.openapi) {
+    const specPath = options?.baseDir
+      ? `${options.baseDir}/${config.openapi}`
+      : config.openapi;
+
+    dereferencedSpec = await loadAndDereferenceSpec(specPath);
+    const maxDepth = config.maxDepth ?? 3;
+    const mode = config.mode ?? 'auto';
+
+    if (mode === 'record' && config.target) {
+      const { createRecordHandler } = await import('./openapi/recorder.js');
+      const { RecordingStoreImpl } = await import('./openapi/recorder.js');
+      const store = new RecordingStoreImpl(
+        mockName,
+        config.recordingsDir ?? '.argusai/recordings',
+        config.openapi,
+      );
+      const recordHandler = createRecordHandler(config.target, store, {
+        eventBus: options?.eventBus,
+        mockName,
+      });
+      for (const route of dereferencedSpec.routes) {
+        app.route({
+          method: route.method,
+          url: route.fastifyPath,
+          handler: recordHandler,
+        });
+      }
+      totalRouteCount = dereferencedSpec.routes.length;
+
+      // Flush recordings on server close
+      app.addHook('onClose', async () => {
+        await store.flush();
+      });
+    } else if (mode === 'replay') {
+      const { RecordingStoreImpl, computeSignature } = await import('./openapi/recorder.js');
+      const store = new RecordingStoreImpl(
+        mockName,
+        config.recordingsDir ?? '.argusai/recordings',
+        config.openapi,
+      );
+      await store.load();
+      for (const route of dereferencedSpec.routes) {
+        app.route({
+          method: route.method,
+          url: route.fastifyPath,
+          handler: async (req, reply) => {
+            const query = (req.query ?? {}) as Record<string, string>;
+            const sig = computeSignature(req.method, req.url.split('?')[0]!, query);
+            const recording = store.find(sig);
+            if (!recording) {
+              return reply.status(404).send({
+                error: 'No recording found',
+                signature: sig,
+              });
+            }
+            for (const [k, v] of Object.entries(recording.response.headers)) {
+              void reply.header(k, v);
+            }
+            return reply.status(recording.response.status).send(recording.response.body);
+          },
+        });
+      }
+      totalRouteCount = dereferencedSpec.routes.length;
+    } else if (mode === 'smart') {
+      const { RecordingStoreImpl, computeSignature } = await import('./openapi/recorder.js');
+      const { generateResponseBody } = await import('./openapi/response-generator.js');
+      const store = new RecordingStoreImpl(
+        mockName,
+        config.recordingsDir ?? '.argusai/recordings',
+        config.openapi,
+      );
+      await store.load();
+      for (const route of dereferencedSpec.routes) {
+        app.route({
+          method: route.method,
+          url: route.fastifyPath,
+          handler: async (req, reply) => {
+            const query = (req.query ?? {}) as Record<string, string>;
+            const sig = computeSignature(req.method, req.url.split('?')[0]!, query);
+            const recording = store.find(sig);
+            if (recording) {
+              for (const [k, v] of Object.entries(recording.response.headers)) {
+                void reply.header(k, v);
+              }
+              return reply.status(recording.response.status).send(recording.response.body);
+            }
+            // Fallback to auto-generated response
+            const responseDef = route.responses.get(route.defaultStatus);
+            let body: unknown = null;
+            if (responseDef?.example !== undefined) {
+              body = responseDef.example;
+            } else if (responseDef?.schema) {
+              body = generateResponseBody(responseDef.schema, { maxDepth });
+            }
+            if (responseDef?.contentType) {
+              void reply.header('content-type', responseDef.contentType);
+            }
+            return reply.status(route.defaultStatus).send(body);
+          },
+        });
+      }
+      totalRouteCount = dereferencedSpec.routes.length;
+    } else {
+      // mode === 'auto' (default)
+      const openAPIRoutes = buildOpenAPIRoutes(dereferencedSpec, { maxDepth });
+      for (const routeOpt of openAPIRoutes) {
+        const routeKey = `${String(routeOpt.method)}:${routeOpt.url}`;
+        if (overrideKeys.has(routeKey)) continue;
+        app.route(routeOpt);
+      }
+      totalRouteCount = openAPIRoutes.length;
+    }
+
+    // Emit SSE event
+    options?.eventBus?.emit('setup', {
+      event: 'mock_openapi_parsed',
+      data: {
+        type: 'mock_openapi_parsed',
+        name: mockName,
+        endpoints: dereferencedSpec.routes.length,
+        specVersion: dereferencedSpec.openApiVersion,
+        timestamp: Date.now(),
+      },
+    });
+
+    // Validation hook (US2)
+    if (config.validate && dereferencedSpec) {
+      const { compileValidators, validateRequest } = await import('./openapi/request-validator.js');
+      const validators = compileValidators(dereferencedSpec);
+      app.addHook('preHandler', async (req, reply) => {
+        if (req.url.startsWith('/_mock/')) return;
+        const urlPath = req.url.split('?')[0]!;
+        const result = validateRequest(validators, req.method, urlPath, {
+          body: req.body,
+          params: req.params as Record<string, string>,
+          query: req.query as Record<string, string>,
+          headers: req.headers as Record<string, string | string[] | undefined>,
+        });
+        if (!result.valid) {
+          options?.eventBus?.emit('setup', {
+            event: 'mock_validation_error',
+            data: {
+              type: 'mock_validation_error',
+              name: mockName,
+              method: req.method,
+              path: urlPath,
+              errors: result.errors,
+              timestamp: Date.now(),
+            },
+          });
+          return reply.status(422).send({
+            error: 'Request validation failed',
+            code: 'VALIDATION_ERROR',
+            details: result.errors,
+          });
+        }
+      });
+    }
+  }
+
+  // ── Override routes (take precedence over auto-generated) ───────────
+  const overrideRoutes: MockRouteConfig[] = [];
+  if (config.openapi) {
+    if (config.overrides) overrideRoutes.push(...config.overrides);
+    if (config.routes) overrideRoutes.push(...config.routes);
+  }
+
+  if (overrideRoutes.length > 0) {
+    registerMockRoutes(app, overrideRoutes);
+    totalRouteCount += overrideRoutes.length;
+  }
+
+  // ── User-defined mock routes (legacy path — no openapi field) ──────
+  if (!config.openapi && manualRoutes.length > 0) {
+    registerMockRoutes(app, manualRoutes);
   }
 
   return app;

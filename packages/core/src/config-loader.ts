@@ -61,13 +61,34 @@ export const MockRouteSchema = z.object({
   }).optional().describe('Conditional matching rules for request routing'),
 }).describe('Mock service route definition');
 
+/** Mock operating mode schema */
+export const MockModeSchema = z.enum(['auto', 'record', 'replay', 'smart']);
+
 /** Mock service configuration schema */
 export const MockServiceSchema = z.object({
   port: z.number().describe('Host port the mock server listens on'),
   containerPort: z.number().optional().describe('Container-internal port (for Docker network access)'),
-  routes: z.array(MockRouteSchema).optional().describe('Mock route definitions'),
+  routes: z.array(MockRouteSchema).optional()
+    .describe('Mock route definitions (backward compatible; acts as overrides when openapi is set)'),
   image: z.string().optional().describe('Pre-built Docker image (alternative to inline routes)'),
-}).describe('Mock service configuration');
+  openapi: z.string().optional()
+    .describe('Path to OpenAPI 3.x spec file (YAML or JSON), relative to e2e.yaml'),
+  mode: MockModeSchema.optional().default('auto')
+    .describe('Mock operating mode: auto, record, replay, smart'),
+  validate: z.boolean().optional().default(false)
+    .describe('Enable request validation against OpenAPI spec'),
+  target: z.string().url().optional()
+    .describe('Real API base URL for record mode proxying'),
+  recordingsDir: z.string().optional().default('.argusai/recordings')
+    .describe('Directory for storing recorded request/response pairs'),
+  maxDepth: z.number().min(1).max(10).optional().default(3)
+    .describe('Maximum nesting depth for circular $ref resolution'),
+  overrides: z.array(MockRouteSchema).optional()
+    .describe('Manual override routes that take precedence over auto-generated routes'),
+}).refine(
+  (data) => data.mode !== 'record' || data.target !== undefined,
+  { message: 'target is required when mode is "record"', path: ['target'] },
+).describe('Mock service configuration');
 
 /** Retry policy schema */
 export const RetryPolicySchema = z.object({

@@ -1,6 +1,6 @@
 /**
  * @module server
- * MCP server setup — registers all 18 tools with Zod input schemas.
+ * MCP server setup — registers all 20 tools with Zod input schemas.
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -26,6 +26,8 @@ import { handleCompare } from './tools/compare.js';
 import { handleDiagnose } from './tools/diagnose.js';
 import { handleReportFix } from './tools/report-fix.js';
 import { handlePatterns } from './tools/patterns.js';
+import { handleMockGenerate } from './tools/mock-generate.js';
+import { handleMockValidate } from './tools/mock-validate.js';
 
 /** Shared platform services injected into tool handlers. */
 export interface PlatformServices {
@@ -82,7 +84,7 @@ function handleError(err: unknown): { content: Array<{ type: 'text'; text: strin
 }
 
 /**
- * Create and configure the MCP server with all 18 tools registered.
+ * Create and configure the MCP server with all 20 tools registered.
  *
  * When called without options, creates standalone instances.
  * Pass shared `sessionManager` and `eventBus` to integrate with Dashboard.
@@ -429,6 +431,46 @@ export function createServer(options?: CreateServerOptions): {
     async (params) => {
       try {
         const result = await handlePatterns(params, sessionManager);
+        return successResponse(result);
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
+  // Tool 19: argus_mock_generate
+  server.tool(
+    'argus_mock_generate',
+    {
+      projectPath: z.string().describe('Absolute path to project directory containing e2e.yaml'),
+      specPath: z.string().describe('Path to OpenAPI 3.x spec file (YAML or JSON). Absolute or relative to projectPath.'),
+      mockName: z.string().optional().describe('Name for the generated mock service. Default: derived from spec title.'),
+      port: z.number().optional().describe('Port number for the mock server. Default: 9090.'),
+      mode: z.enum(['auto', 'record', 'replay', 'smart']).optional().describe('Mock operating mode. Default: auto.'),
+      validate: z.boolean().optional().describe('Enable request validation in generated config. Default: false.'),
+      target: z.string().optional().describe('Real API base URL (required when mode is "record").'),
+    },
+    async (params) => {
+      try {
+        const result = await handleMockGenerate(params);
+        return successResponse(result);
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
+  // Tool 20: argus_mock_validate
+  server.tool(
+    'argus_mock_validate',
+    {
+      projectPath: z.string().describe('Absolute path to project directory containing e2e.yaml'),
+      mockName: z.string().optional().describe('Name of the mock service to validate. If omitted, validates all mocks with openapi field.'),
+      specPath: z.string().optional().describe('Override: path to OpenAPI spec file. If omitted, uses the openapi field from mock config.'),
+    },
+    async (params) => {
+      try {
+        const result = await handleMockValidate(params, sessionManager);
         return successResponse(result);
       } catch (err) {
         return handleError(err);

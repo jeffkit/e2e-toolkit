@@ -110,6 +110,10 @@ export type {
 
 // Mock Generator
 export { createMockServer, resolveResponseTemplate } from './mock-generator.js';
+export type { CreateMockServerOptions } from './mock-generator.js';
+
+// OpenAPI Smart Mock Subsystem
+export * from './openapi/index.js';
 
 // SSE Bus
 export { EventBus, createEventBus } from './sse-bus.js';
