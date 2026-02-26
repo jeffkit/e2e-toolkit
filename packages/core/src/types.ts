@@ -1,3 +1,19 @@
+// ==================== History Types (re-exported) ====================
+
+import type { HistoryConfig as _HistoryConfig } from './history/types.js';
+
+export type {
+  TriggerSource,
+  StabilityLevel,
+  TestRunRecord,
+  TestCaseRunRecord,
+  FlakyInfo,
+  RunComparison,
+  ComparisonItem,
+  TrendDataPoint,
+  HistoryConfig,
+} from './history/types.js';
+
 // ==================== 配置类型 ====================
 
 /** 健康检查配置 */
@@ -161,6 +177,8 @@ export interface E2EConfig {
   repos?: RepoConfig[];
   /** Resilience subsystem configuration (error recovery, preflight, circuit breaker) */
   resilience?: ResilienceConfig;
+  /** History subsystem configuration (test result persistence, flaky detection) */
+  history?: _HistoryConfig;
 }
 
 // ==================== Resilience Config ====================

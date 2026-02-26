@@ -10,8 +10,9 @@
  * auto-cleanup and per-session mutex.
  */
 
-import type { E2EConfig, SSEBus, PortMapping, CircuitBreakerState } from 'argusai-core';
-import { CircuitBreaker } from 'argusai-core';
+import type { E2EConfig, SSEBus, PortMapping, CircuitBreakerState, HistoryConfig } from 'argusai-core';
+import type { HistoryStore } from 'argusai-core';
+import { CircuitBreaker, createHistoryStore, HistoryRecorder } from 'argusai-core';
 
 // =====================================================================
 // Types
@@ -39,6 +40,10 @@ export interface ProjectSession {
   portMappings?: PortMapping[];
   /** Circuit breaker instance for Docker operations */
   circuitBreaker?: CircuitBreaker;
+  /** History store for test result persistence */
+  historyStore?: HistoryStore;
+  /** History recorder for post-run persistence */
+  historyRecorder?: HistoryRecorder;
 }
 
 const VALID_TRANSITIONS: Record<SessionState, SessionState[]> = {
@@ -170,6 +175,25 @@ export class SessionManager {
         )
       : undefined;
 
+    let historyStore: HistoryStore | undefined;
+    let historyRecorder: HistoryRecorder | undefined;
+
+    const historyConfig = config.history as HistoryConfig | undefined;
+    if (historyConfig?.enabled !== false) {
+      try {
+        const effectiveConfig: HistoryConfig = historyConfig ?? {
+          enabled: true,
+          storage: 'local',
+          retention: { maxAge: '90d', maxRuns: 1000 },
+          flakyWindow: 10,
+        };
+        historyStore = createHistoryStore(effectiveConfig, projectPath);
+        historyRecorder = new HistoryRecorder(historyStore, effectiveConfig);
+      } catch {
+        // Graceful degradation: history init failure is non-critical
+      }
+    }
+
     const session: ProjectSession = {
       projectPath,
       config,
@@ -184,6 +208,8 @@ export class SessionManager {
       runId: Date.now().toString(36),
       activeGuardians: new Map(),
       circuitBreaker,
+      historyStore,
+      historyRecorder,
     };
 
     this.sessions.set(k, session);
@@ -299,6 +325,7 @@ export class SessionManager {
         mock.server.close().catch(() => {});
       }
       session.activeGuardians.clear();
+      try { session.historyStore?.close(); } catch { /* ignore */ }
     }
     this.sessions.clear();
   }

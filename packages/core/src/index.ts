@@ -177,6 +177,10 @@ export { ConsoleReporter, JSONReporter, HTMLReporter } from './reporter.js';
 // Resilience Subsystem
 export * from './resilience/index.js';
 
+// History Subsystem
+export * from './history/index.js';
+export { HistoryConfigSchema } from './config-loader.js';
+
 // Workspace Manager
 export {
   getWorkspacePath,

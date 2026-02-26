@@ -210,7 +210,22 @@ async function executeSuites(
     suites: suiteResults,
   };
 
-  // Persist test records
+  // Persist to history subsystem (HistoryRecorder)
+  if (session.historyRecorder) {
+    try {
+      session.historyRecorder.recordRun(
+        runResult,
+        session.config.project.name,
+        session.projectPath,
+        session.configPath,
+        'mcp',
+      );
+    } catch {
+      // Graceful degradation: history recording failure is non-critical
+    }
+  }
+
+  // Persist test records (legacy store)
   if (platform?.store) {
     for (const sr of suiteResults) {
       platform.store.saveTestRecord({

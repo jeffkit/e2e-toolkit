@@ -170,6 +170,22 @@ export const ResilienceConfigSchema = z.object({
 }).default({}).describe('Resilience subsystem configuration — error recovery, preflight, circuit breaker');
 
 // =====================================================================
+// History Configuration Schema
+// =====================================================================
+
+/** History subsystem Zod schema with sensible defaults for persistence and flaky detection. */
+export const HistoryConfigSchema = z.object({
+  enabled: z.boolean().default(true).describe('Enable test result persistence'),
+  storage: z.enum(['local', 'memory']).default('local').describe('Storage backend: local SQLite or in-memory'),
+  path: z.string().optional().describe('Custom SQLite database file path'),
+  retention: z.object({
+    maxAge: z.string().default('90d').describe('Maximum age of retained runs (e.g. "90d")'),
+    maxRuns: z.number().min(10).max(100000).default(1000).describe('Maximum number of runs to retain'),
+  }).default({}).describe('Retention policy configuration'),
+  flakyWindow: z.number().min(2).max(100).default(10).describe('Number of recent runs for flaky detection window'),
+}).default({}).describe('Test result history persistence and flaky detection configuration');
+
+// =====================================================================
 // Complete E2E Configuration Schema
 // =====================================================================
 
@@ -197,6 +213,7 @@ export const E2EConfigSchema = z.object({
   network: NetworkSchema.optional().describe('Docker network configuration'),
   repos: z.array(RepoConfigSchema).optional().describe('Git repositories for branch selection and builds'),
   resilience: ResilienceConfigSchema.optional().describe('Resilience subsystem — error recovery, preflight, circuit breaker'),
+  history: HistoryConfigSchema.optional().describe('Test result history persistence and flaky detection'),
 }).describe('Preflight E2E test configuration');
 
 /** Validated configuration type inferred from the Zod schema */

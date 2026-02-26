@@ -1,6 +1,6 @@
 /**
  * @module server
- * MCP server setup — registers all 11 preflight tools with Zod input schemas.
+ * MCP server setup — registers all 15 preflight tools with Zod input schemas.
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -19,6 +19,10 @@ import { handleClean } from './tools/clean.js';
 import { handleMockRequests } from './tools/mock-requests.js';
 import { handlePreflightCheck } from './tools/preflight-check.js';
 import { handleResetCircuit } from './tools/reset-circuit.js';
+import { handleHistory } from './tools/history.js';
+import { handleTrends } from './tools/trends.js';
+import { handleFlaky } from './tools/flaky.js';
+import { handleCompare } from './tools/compare.js';
 
 /** Shared platform services injected into tool handlers. */
 export interface PlatformServices {
@@ -75,7 +79,7 @@ function handleError(err: unknown): { content: Array<{ type: 'text'; text: strin
 }
 
 /**
- * Create and configure the MCP server with all 11 preflight tools registered.
+ * Create and configure the MCP server with all 15 preflight tools registered.
  *
  * When called without options, creates standalone instances.
  * Pass shared `sessionManager` and `eventBus` to integrate with Dashboard.
@@ -284,6 +288,82 @@ export function createServer(options?: CreateServerOptions): {
     async (params) => {
       try {
         const result = await handleResetCircuit(params, sessionManager);
+        return successResponse(result);
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
+  // Tool 12: argus_history
+  server.tool(
+    'argus_history',
+    {
+      projectPath: z.string().describe('Project path (must have active session)'),
+      limit: z.number().optional().default(20).describe('Max number of runs to return (1-100)'),
+      status: z.enum(['passed', 'failed']).optional().describe('Filter by run status'),
+      days: z.number().optional().describe('Filter to runs within the last N days'),
+      offset: z.number().optional().default(0).describe('Pagination offset'),
+    },
+    async (params) => {
+      try {
+        const result = await handleHistory(params, sessionManager);
+        return successResponse(result);
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
+  // Tool 13: argus_trends
+  server.tool(
+    'argus_trends',
+    {
+      projectPath: z.string().describe('Project path'),
+      metric: z.enum(['pass-rate', 'duration', 'flaky']).describe('Metric to trend'),
+      days: z.number().optional().default(14).describe('Number of days to analyze (1-90)'),
+      suiteId: z.string().optional().describe('Filter to a specific suite'),
+    },
+    async (params) => {
+      try {
+        const result = await handleTrends(params, sessionManager);
+        return successResponse(result);
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
+  // Tool 14: argus_flaky
+  server.tool(
+    'argus_flaky',
+    {
+      projectPath: z.string().describe('Project path'),
+      topN: z.number().optional().default(10).describe('Number of flaky cases to return (1-50)'),
+      minScore: z.number().optional().default(0.01).describe('Minimum flaky score threshold (0-1)'),
+      suiteId: z.string().optional().describe('Filter to a specific suite'),
+    },
+    async (params) => {
+      try {
+        const result = await handleFlaky(params, sessionManager);
+        return successResponse(result);
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
+  // Tool 15: argus_compare
+  server.tool(
+    'argus_compare',
+    {
+      projectPath: z.string().describe('Project path'),
+      baseRunId: z.string().describe('ID of the base (earlier) run'),
+      compareRunId: z.string().describe('ID of the comparison (later) run'),
+    },
+    async (params) => {
+      try {
+        const result = await handleCompare(params, sessionManager);
         return successResponse(result);
       } catch (err) {
         return handleError(err);
