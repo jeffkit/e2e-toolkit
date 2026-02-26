@@ -8,3 +8,6 @@
 | `ci-templates/gitlab-ci.yml` | `packages/cli/src/commands/**` | GitLab CI 模板 |
 | `ci-templates/github-actions.yml` | `packages/cli/src/commands/**` | GitHub Actions 模板 |
 | `mcp-templates/cursor-mcp-config.json` | `packages/mcp/src/server.ts` | MCP 配置模板 |
+| `specs/003-resilience/spec.md` | `packages/core/src/resilience/**` | 韧性与自愈功能规格 |
+| `specs/003-resilience/plan.md` | `packages/core/src/resilience/**`, `packages/mcp/src/tools/preflight-check.ts`, `packages/mcp/src/tools/reset-circuit.ts` | 韧性功能实现计划 |
+| `specs/003-resilience/tasks.md` | `packages/core/src/resilience/**`, `packages/mcp/src/**` | 韧性功能任务清单 |

@@ -26,7 +26,11 @@ function setupSession(manager: SessionManager, projectPath = '/test/project'): v
       container: { name: 'test-container', ports: ['3000:3000'] },
     },
     network: { name: 'test-net' },
-  };
+    resilience: {
+      preflight: { enabled: false },
+      circuitBreaker: { enabled: false },
+    },
+  } as E2EConfig;
   manager.create(projectPath, config, `${projectPath}/e2e.yaml`);
 }
 

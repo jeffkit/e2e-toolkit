@@ -1,11 +1,12 @@
 /**
  * @module server
- * MCP server setup — registers all 9 preflight tools with Zod input schemas.
+ * MCP server setup — registers all 11 preflight tools with Zod input schemas.
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import type { SSEBus, Store, TaskQueue, Notifier, ResourceLimiter } from 'argusai-core';
+import { ArgusError } from 'argusai-core';
 import { SessionManager, SessionError } from './session.js';
 import { ResultFormatter } from './formatters/result-formatter.js';
 import { handleInit } from './tools/init.js';
@@ -16,6 +17,8 @@ import { handleStatus } from './tools/status.js';
 import { handleLogs } from './tools/logs.js';
 import { handleClean } from './tools/clean.js';
 import { handleMockRequests } from './tools/mock-requests.js';
+import { handlePreflightCheck } from './tools/preflight-check.js';
+import { handleResetCircuit } from './tools/reset-circuit.js';
 
 /** Shared platform services injected into tool handlers. */
 export interface PlatformServices {
@@ -61,6 +64,9 @@ function errorResponse(code: string, message: string, details?: unknown): { cont
 
 /** Convert an unknown thrown value into an MCP error response. */
 function handleError(err: unknown): { content: Array<{ type: 'text'; text: string }> } {
+  if (err instanceof ArgusError) {
+    return errorResponse(err.code, err.message, err.toJSON());
+  }
   if (err instanceof SessionError) {
     return errorResponse(err.code, err.message);
   }
@@ -69,7 +75,7 @@ function handleError(err: unknown): { content: Array<{ type: 'text'; text: strin
 }
 
 /**
- * Create and configure the MCP server with all 9 preflight tools registered.
+ * Create and configure the MCP server with all 11 preflight tools registered.
  *
  * When called without options, creates standalone instances.
  * Pass shared `sessionManager` and `eventBus` to integrate with Dashboard.
@@ -243,6 +249,41 @@ export function createServer(options?: CreateServerOptions): {
     async (params) => {
       try {
         const result = await handleMockRequests(params, sessionManager);
+        return successResponse(result);
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
+  // Tool 10: argus_preflight_check
+  server.tool(
+    'argus_preflight_check',
+    {
+      projectPath: z.string().describe('Project path (must have active session)'),
+      skipDiskCheck: z.boolean().optional().describe('Skip disk space check'),
+      skipOrphanCheck: z.boolean().optional().describe('Skip orphaned resource check'),
+      autoFix: z.boolean().optional().describe('Auto-clean orphaned resources'),
+    },
+    async (params) => {
+      try {
+        const result = await handlePreflightCheck(params, sessionManager);
+        return successResponse(result);
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
+  // Tool 11: argus_reset_circuit
+  server.tool(
+    'argus_reset_circuit',
+    {
+      projectPath: z.string().describe('Project path (must have active session)'),
+    },
+    async (params) => {
+      try {
+        const result = await handleResetCircuit(params, sessionManager);
         return successResponse(result);
       } catch (err) {
         return handleError(err);

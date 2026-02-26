@@ -159,6 +159,146 @@ export interface E2EConfig {
   network?: NetworkConfig;
   /** Git 仓库列表（用于分支选择与构建前 checkout） */
   repos?: RepoConfig[];
+  /** Resilience subsystem configuration (error recovery, preflight, circuit breaker) */
+  resilience?: ResilienceConfig;
+}
+
+// ==================== Resilience Config ====================
+
+/** Resilience subsystem configuration. */
+export interface ResilienceConfig {
+  preflight: {
+    enabled: boolean;
+    diskSpaceThreshold: string;
+    cleanOrphans: boolean;
+  };
+  container: {
+    restartOnFailure: boolean;
+    maxRestarts: number;
+    restartDelay: string;
+    restartBackoff: 'exponential' | 'linear';
+  };
+  network: {
+    portConflictStrategy: 'auto' | 'fail';
+    verifyConnectivity: boolean;
+  };
+  circuitBreaker: {
+    enabled: boolean;
+    failureThreshold: number;
+    resetTimeoutMs: number;
+  };
+}
+
+// ==================== Preflight Health Check ====================
+
+/** Result status of an individual preflight check. */
+export type CheckStatus = 'pass' | 'warn' | 'fail';
+
+/** Aggregate health assessment. */
+export type OverallHealth = 'healthy' | 'degraded' | 'unhealthy';
+
+/** Result of a single preflight health check. */
+export interface HealthCheckResult {
+  name: string;
+  status: CheckStatus;
+  message: string;
+  details: Record<string, unknown>;
+  duration: number;
+}
+
+/** Aggregated preflight health report. */
+export interface HealthReport {
+  overall: OverallHealth;
+  checks: HealthCheckResult[];
+  timestamp: number;
+  duration: number;
+}
+
+// ==================== Port Mapping ====================
+
+/** Mapping from original configured port to actual resolved port. */
+export interface PortMapping {
+  service: string;
+  originalPort: number;
+  actualPort: number;
+  reassigned: boolean;
+}
+
+// ==================== Container Diagnostics ====================
+
+/** Diagnostic snapshot captured before a container restart attempt. */
+export interface ContainerDiagnostics {
+  containerId: string;
+  containerName: string;
+  exitCode: number | null;
+  oomKilled: boolean;
+  logs: string[];
+  memoryStats: { limit: number; peak: number } | null;
+  timestamp: number;
+}
+
+/** Full history of restart attempts for a single container. */
+export interface RestartHistory {
+  containerName: string;
+  attempts: Array<ContainerDiagnostics & { attemptNumber: number; delayMs: number }>;
+  finalStatus: 'recovered' | 'exhausted';
+}
+
+// ==================== Orphan Resources ====================
+
+/** A Docker resource left over from a previous ArgusAI run. */
+export interface OrphanResource {
+  type: 'container' | 'network' | 'volume';
+  name: string;
+  id: string;
+  project: string;
+  runId: string;
+  createdAt: string;
+}
+
+/** Result of an orphan detection + cleanup cycle. */
+export interface OrphanCleanupResult {
+  found: OrphanResource[];
+  removed: OrphanResource[];
+  failed: Array<OrphanResource & { error: string }>;
+  duration: number;
+}
+
+// ==================== Circuit Breaker ====================
+
+/** Circuit breaker state machine states. */
+export type CircuitState = 'closed' | 'open' | 'half-open';
+
+/** Full observable state of a circuit breaker instance. */
+export interface CircuitBreakerState {
+  state: CircuitState;
+  failureCount: number;
+  lastFailureTime: number | null;
+  lastStateTransition: number;
+  failureHistory: Array<{ error: string; timestamp: number }>;
+}
+
+// ==================== Network Verification ====================
+
+/** Result of a single container-to-service connectivity check. */
+export interface ConnectivityResult {
+  service: string;
+  hostname: string;
+  reachable: boolean;
+  dnsResolved: boolean;
+  latencyMs: number;
+  error?: string;
+}
+
+/** Report from verifying network connectivity between containers and mock services. */
+export interface NetworkVerificationReport {
+  results: ConnectivityResult[];
+  allReachable: boolean;
+  networkTopology: {
+    networkName: string;
+    connectedContainers: string[];
+  };
+  timestamp: number;
 }
 
 // ==================== 测试类型 ====================
@@ -466,11 +606,31 @@ export type CleanEvent =
   | { type: 'network_removed'; name: string; timestamp: number }
   | { type: 'clean_end'; duration: number; timestamp: number };
 
+// ==================== Resilience SSE Events ====================
+
+export type ResilienceEvent =
+  | { type: 'preflight_start'; project: string; timestamp: number }
+  | { type: 'preflight_check'; name: string; status: string; message: string; timestamp: number }
+  | { type: 'preflight_end'; overall: string; duration: number; timestamp: number }
+  | { type: 'restart_attempt'; container: string; attempt: number; reason: string; delay: number; timestamp: number }
+  | { type: 'restart_success'; container: string; attempt: number; duration: number; timestamp: number }
+  | { type: 'restart_exhausted'; container: string; attempts: number; timestamp: number }
+  | { type: 'cleanup_start'; project: string; timestamp: number }
+  | { type: 'cleanup_resource'; resourceType: string; name: string; action: string; timestamp: number }
+  | { type: 'cleanup_end'; found: number; removed: number; failed: number; timestamp: number }
+  | { type: 'port_conflict'; service: string; port: number; pid?: number; timestamp: number }
+  | { type: 'port_reassigned'; service: string; original: number; actual: number; timestamp: number }
+  | { type: 'circuit_open'; failureCount: number; lastError: string; timestamp: number }
+  | { type: 'circuit_half_open'; timestamp: number }
+  | { type: 'circuit_closed'; probeSucceeded: boolean; timestamp: number }
+  | { type: 'network_check'; service: string; reachable: boolean; timestamp: number }
+  | { type: 'network_verified'; allReachable: boolean; timestamp: number };
+
 /** Unified event type spanning all lifecycle phases. */
-export type PreflightEvent = TestEvent | BuildEvent | ContainerEvent | SetupEvent | CleanEvent;
+export type PreflightEvent = TestEvent | BuildEvent | ContainerEvent | SetupEvent | CleanEvent | ResilienceEvent;
 
 /** Preflight event channels for the SSE bus. */
-export type PreflightChannel = 'test' | 'build' | 'container' | 'setup' | 'clean' | 'activity';
+export type PreflightChannel = 'test' | 'build' | 'container' | 'setup' | 'clean' | 'activity' | 'resilience';
 
 /** Entry in the activity timeline — tracks a single high-level operation. */
 export interface ActivityEntry {

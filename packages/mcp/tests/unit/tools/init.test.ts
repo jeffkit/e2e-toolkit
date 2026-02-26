@@ -6,9 +6,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { SessionManager, SessionError } from '../../../src/session.js';
 import { handleInit } from '../../../src/tools/init.js';
 
-vi.mock('argusai-core', () => ({
-  loadConfig: vi.fn(),
-}));
+vi.mock('argusai-core', async (importOriginal) => {
+  const orig = await importOriginal() as Record<string, unknown>;
+  return {
+    ...orig,
+    loadConfig: vi.fn(),
+  };
+});
 
 const { loadConfig } = await import('argusai-core');
 

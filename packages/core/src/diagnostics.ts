@@ -8,7 +8,7 @@
  */
 
 import { getContainerLogs, getContainerStatus } from './docker-engine.js';
-import type { DiagnosticReport, ContainerStatus } from './types.js';
+import type { DiagnosticReport, ContainerStatus, RestartHistory } from './types.js';
 import { execFile as execFileCb } from 'node:child_process';
 import { promisify } from 'node:util';
 
@@ -184,4 +184,37 @@ export class DiagnosticCollector {
       return undefined;
     }
   }
+}
+
+/**
+ * Format a RestartHistory into a human-readable diagnostic string.
+ *
+ * Includes container name, final status, and per-attempt details
+ * (exit code, OOM status, delay, and log tail).
+ */
+export function formatRestartHistory(history: RestartHistory): string {
+  const lines: string[] = [];
+  lines.push(`Container: ${history.containerName}`);
+  lines.push(`Final Status: ${history.finalStatus}`);
+  lines.push(`Total Attempts: ${history.attempts.length}`);
+  lines.push('---');
+
+  for (const attempt of history.attempts) {
+    lines.push(`Attempt #${attempt.attemptNumber} (delay: ${attempt.delayMs}ms)`);
+    lines.push(`  Exit Code: ${attempt.exitCode ?? 'N/A'}`);
+    lines.push(`  OOM Killed: ${attempt.oomKilled ? 'Yes' : 'No'}`);
+    if (attempt.memoryStats) {
+      lines.push(`  Memory: peak=${attempt.memoryStats.peak}B / limit=${attempt.memoryStats.limit}B`);
+    }
+    const logTail = attempt.logs.slice(-5);
+    if (logTail.length > 0) {
+      lines.push(`  Last ${logTail.length} log lines:`);
+      for (const log of logTail) {
+        lines.push(`    ${log}`);
+      }
+    }
+    lines.push('');
+  }
+
+  return lines.join('\n');
 }

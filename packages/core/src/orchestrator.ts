@@ -10,6 +10,9 @@ import type {
   ServiceDefinition,
   ServiceConfig,
   BuildEvent,
+  ResilienceConfig,
+  OrphanCleanupResult,
+  SSEBus,
 } from './types.js';
 import {
   buildImage,
@@ -18,8 +21,11 @@ import {
   ensureNetwork,
   removeNetwork,
   waitForHealthy,
+  getContainerStatus,
 } from './docker-engine.js';
 import type { DockerBuildOptions, DockerRunOptions } from './docker-engine.js';
+import { ContainerGuardian } from './resilience/container-guardian.js';
+import { OrphanCleaner } from './resilience/orphan-cleaner.js';
 
 export interface OrchestratorServiceResult {
   name: string;
@@ -51,6 +57,7 @@ export interface CleanAllResult {
     action: 'removed' | 'failed' | 'skipped';
     error?: string;
   };
+  orphanCleanup?: OrphanCleanupResult;
 }
 
 /**
@@ -152,6 +159,12 @@ export class MultiServiceOrchestrator {
     services: ServiceDefinition[],
     networkName: string,
     healthTimeout = 120_000,
+    options?: {
+      resilienceConfig?: ResilienceConfig['container'];
+      labels?: Record<string, string>;
+      eventBus?: SSEBus;
+      guardianMap?: Map<string, ContainerGuardian>;
+    },
   ): Promise<OrchestratorServiceResult[]> {
     const ordered = this.topologicalSort(services);
     const results: OrchestratorServiceResult[] = [];
@@ -174,6 +187,7 @@ export class MultiServiceOrchestrator {
                 startPeriod: svc.container.healthcheck.startPeriod ?? '30s',
               }
             : undefined,
+          labels: options?.labels,
         };
 
         const containerId = await startContainer(runOpts);
@@ -186,6 +200,23 @@ export class MultiServiceOrchestrator {
           const isHealthy = await waitForHealthy(svc.container.name, healthTimeout);
           healthCheckDuration = Date.now() - hcStart;
           status = isHealthy ? 'healthy' : 'unhealthy';
+
+          if (!isHealthy && options?.resilienceConfig?.restartOnFailure) {
+            const guardian = new ContainerGuardian(options.resilienceConfig, options.eventBus);
+            options.guardianMap?.set(svc.container.name, guardian);
+            try {
+              const history = await guardian.monitorAndRestart(
+                svc.container.name,
+                runOpts,
+                options.labels ?? {},
+              );
+              if (history?.finalStatus === 'recovered') {
+                status = 'healthy';
+              }
+            } catch {
+              status = 'unhealthy';
+            }
+          }
         }
 
         results.push({
@@ -236,14 +267,17 @@ export class MultiServiceOrchestrator {
   /**
    * Stop and remove all service containers and the shared network.
    * Uses best-effort cleanup — continues even if individual removals fail.
+   * Optionally runs OrphanCleaner for comprehensive teardown.
    *
    * @param services - Services to clean up
    * @param networkName - Docker network to remove
+   * @param orphanCleanup - Optional orphan cleanup parameters
    * @returns Cleanup results
    */
   async cleanAll(
     services: ServiceDefinition[],
     networkName?: string,
+    orphanCleanup?: { projectName: string; runId: string; eventBus?: SSEBus },
   ): Promise<CleanAllResult> {
     const containerResults: CleanAllResult['containers'] = [];
 
@@ -289,7 +323,17 @@ export class MultiServiceOrchestrator {
       networkResult = { name: '', action: 'skipped' };
     }
 
-    return { containers: containerResults, network: networkResult };
+    let orphanCleanupResult: OrphanCleanupResult | undefined;
+    if (orphanCleanup) {
+      const cleaner = new OrphanCleaner(
+        orphanCleanup.projectName,
+        orphanCleanup.runId,
+        orphanCleanup.eventBus,
+      );
+      orphanCleanupResult = await cleaner.detectAndCleanup();
+    }
+
+    return { containers: containerResults, network: networkResult, orphanCleanup: orphanCleanupResult };
   }
 
   /**

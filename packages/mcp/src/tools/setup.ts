@@ -14,9 +14,18 @@ import {
   isPortInUse,
   parseTime,
   MultiServiceOrchestrator,
+  PreflightChecker,
+  PortResolver,
+  OrphanCleaner,
+  NetworkVerifier,
+  ArgusError,
   type E2EConfig,
   type ServiceDefinition,
   type MockServiceConfig,
+  type HealthReport,
+  type PortMapping,
+  type OrphanCleanupResult,
+  type NetworkVerificationReport,
 } from 'argusai-core';
 import { SessionManager, SessionError } from '../session.js';
 
@@ -37,6 +46,10 @@ export interface SetupResult {
     routeCount: number;
   }>;
   totalDuration: number;
+  preflight?: HealthReport;
+  portMappings?: PortMapping[];
+  networkVerification?: NetworkVerificationReport;
+  orphanCleanup?: OrphanCleanupResult;
 }
 
 function parsePorts(ports: string[]): Array<{ host: number; container: number }> {
@@ -88,8 +101,44 @@ export async function handleSetup(
   });
   bus?.emit('setup', { event: 'setup_start', data: { type: 'setup_start', project: config.project.name, timestamp: ts() } });
 
+  // Preflight health check gate
+  let preflightReport: HealthReport | undefined;
+  let orphanCleanupResult: OrphanCleanupResult | undefined;
+  const resilienceConfig = config.resilience;
+  if (resilienceConfig?.preflight?.enabled !== false) {
+    const preflightConfig = resilienceConfig?.preflight ?? { enabled: true, diskSpaceThreshold: '2GB', cleanOrphans: true };
+    const checker = new PreflightChecker(bus);
+    preflightReport = await checker.runAll(preflightConfig, config.project.name, session.runId);
+
+    if (preflightReport.overall === 'unhealthy') {
+      throw new ArgusError('DOCKER_UNAVAILABLE', 'Preflight check failed: environment is unhealthy', {
+        healthReport: preflightReport,
+      });
+    }
+
+    if (preflightConfig.cleanOrphans) {
+      const cleaner = new OrphanCleaner(config.project.name, session.runId, bus);
+      orphanCleanupResult = await cleaner.detectAndCleanup();
+    }
+  }
+
   const orchestrator = new MultiServiceOrchestrator();
-  const services = orchestrator.normalizeServices(config);
+  let services = orchestrator.normalizeServices(config);
+  let mocks = config.mocks ?? {};
+  let portMappings: PortMapping[] | undefined;
+
+  // Port conflict resolution
+  const portStrategy = resilienceConfig?.network?.portConflictStrategy ?? 'auto';
+  if (services.length > 0 || Object.keys(mocks).length > 0) {
+    const resolver = new PortResolver(portStrategy, bus);
+    const resolved = await resolver.resolveServicePorts(services, mocks);
+    services = resolved.services;
+    mocks = resolved.mocks;
+    if (resolved.portMappings.some(m => m.reassigned)) {
+      portMappings = resolved.portMappings;
+      session.portMappings = portMappings;
+    }
+  }
 
   const orderedServices = services.length > 0
     ? orchestrator.topologicalSort(services)
@@ -107,8 +156,8 @@ export async function handleSetup(
 
   // Start mock services
   const mockResults: SetupResult['mocks'] = [];
-  if (config.mocks) {
-    for (const [name, mockConfig] of Object.entries(config.mocks)) {
+  if (Object.keys(mocks).length > 0) {
+    for (const [name, mockConfig] of Object.entries(mocks)) {
       const mc = mockConfig as MockServiceConfig;
       try {
         const portInUse = await isPortInUse(mc.port);
@@ -195,6 +244,35 @@ export async function handleSetup(
     sessionManager.transition(params.projectPath, 'running');
   }
 
+  // Network connectivity verification
+  let networkVerification: NetworkVerificationReport | undefined;
+  if (
+    allHealthy &&
+    resilienceConfig?.network?.verifyConnectivity === true &&
+    serviceResults.length > 0 &&
+    mockResults.some(m => m.status === 'running')
+  ) {
+    const firstContainer = orderedServices[0]?.container.name;
+    if (firstContainer) {
+      const mockTargets = mockResults
+        .filter(m => m.status === 'running')
+        .map(m => ({ name: m.name, hostname: m.name, port: m.port }));
+
+      if (mockTargets.length > 0) {
+        const verifier = new NetworkVerifier(bus);
+        try {
+          networkVerification = await verifier.verifyConnectivity(
+            firstContainer,
+            mockTargets,
+            session.networkName,
+          );
+        } catch (err) {
+          if (err instanceof ArgusError) throw err;
+        }
+      }
+    }
+  }
+
   const totalDuration = Date.now() - totalStart;
   bus?.emit('setup', { event: 'setup_end', data: { type: 'setup_end', duration: totalDuration, success: allHealthy, timestamp: ts() } });
   bus?.emit('activity', {
@@ -207,5 +285,9 @@ export async function handleSetup(
     services: serviceResults,
     mocks: mockResults,
     totalDuration,
+    preflight: preflightReport,
+    portMappings,
+    networkVerification,
+    orphanCleanup: orphanCleanupResult,
   };
 }

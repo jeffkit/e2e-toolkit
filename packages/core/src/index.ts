@@ -7,6 +7,7 @@ export * from './types.js';
 export {
   loadConfig,
   E2EConfigSchema,
+  ResilienceConfigSchema,
   RetryPolicySchema,
   ParallelConfigSchema,
   ServiceDefinitionSchema,
@@ -47,8 +48,9 @@ export {
   streamContainerLogs,
   buildBuildArgs,
   buildRunArgs,
+  dockerExec,
 } from './docker-engine.js';
-export type { DockerBuildOptions, DockerRunOptions } from './docker-engine.js';
+export type { DockerBuildOptions, DockerRunOptions, ArgusDockerLabels } from './docker-engine.js';
 export { getDockerHostArgs, isDockerRemote } from './docker-engine.js';
 
 // YAML Engine
@@ -72,7 +74,7 @@ export { PytestRunner } from './runners/pytest-runner.js';
 export { PlaywrightRunner } from './runners/playwright-runner.js';
 
 // Diagnostics
-export { DiagnosticCollector } from './diagnostics.js';
+export { DiagnosticCollector, formatRestartHistory } from './diagnostics.js';
 export type { DiagnosticCollectorOptions } from './diagnostics.js';
 
 // Schema Generator
@@ -171,6 +173,9 @@ export type { Store, StoreOptions, TestRecord, BuildRecord, ActivityRecord } fro
 
 // Reporter
 export { ConsoleReporter, JSONReporter, HTMLReporter } from './reporter.js';
+
+// Resilience Subsystem
+export * from './resilience/index.js';
 
 // Workspace Manager
 export {

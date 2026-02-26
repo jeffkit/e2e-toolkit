@@ -10,7 +10,8 @@
  * auto-cleanup and per-session mutex.
  */
 
-import type { E2EConfig, SSEBus } from 'argusai-core';
+import type { E2EConfig, SSEBus, PortMapping, CircuitBreakerState } from 'argusai-core';
+import { CircuitBreaker } from 'argusai-core';
 
 // =====================================================================
 // Types
@@ -30,6 +31,14 @@ export interface ProjectSession {
   state: SessionState;
   /** Client identifier for multi-tenant isolation */
   clientId: string;
+  /** Unique run identifier used for Docker labels (per session init) */
+  runId: string;
+  /** Active container guardians keyed by container name */
+  activeGuardians: Map<string, unknown>;
+  /** Port mappings from auto-resolution during setup */
+  portMappings?: PortMapping[];
+  /** Circuit breaker instance for Docker operations */
+  circuitBreaker?: CircuitBreaker;
 }
 
 const VALID_TRANSITIONS: Record<SessionState, SessionState[]> = {
@@ -152,6 +161,15 @@ export class SessionManager {
     const networkName = config.network?.name ?? 'e2e-network';
     const now = Date.now();
 
+    const cbConfig = config.resilience?.circuitBreaker;
+    const circuitBreaker = cbConfig?.enabled !== false
+      ? new CircuitBreaker(
+          cbConfig?.failureThreshold ?? 5,
+          cbConfig?.resetTimeoutMs ?? 30_000,
+          this.eventBus,
+        )
+      : undefined;
+
     const session: ProjectSession = {
       projectPath,
       config,
@@ -163,6 +181,9 @@ export class SessionManager {
       lastAccessedAt: now,
       state: 'initialized',
       clientId,
+      runId: Date.now().toString(36),
+      activeGuardians: new Map(),
+      circuitBreaker,
     };
 
     this.sessions.set(k, session);
@@ -277,6 +298,7 @@ export class SessionManager {
       for (const [, mock] of session.mockServers) {
         mock.server.close().catch(() => {});
       }
+      session.activeGuardians.clear();
     }
     this.sessions.clear();
   }

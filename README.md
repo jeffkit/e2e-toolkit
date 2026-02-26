@@ -12,8 +12,9 @@ ArgusAI 是一个声明式的 E2E 测试框架，通过 YAML 配置文件描述�
 - **多运行器** — 支持 YAML / Vitest / pytest / Shell / Exec / Playwright 等多种测试运行器
 - **断言 DSL** — 丰富的断言语法，支持精确匹配、正则、类型检查、存在性验证等
 - **变量系统** — 支持 `{{config.*}}`、`{{env.*}}`、`{{runtime.*}}` 模板变量
+- **韧性自愈** — 结构化错误码、预检健康检查、容器自动重启、端口冲突规避、孤儿资源清理、熔断器保护
 - **可视化 Dashboard** — 实时查看测试执行状态、容器日志、Mock 请求录制
-- **MCP Server** — AI 原生集成，让 Cursor/Claude 等编程助手直接运行 E2E 测试
+- **MCP Server** — AI 原生集成，让 Cursor/Claude 等编程助手直接运行 E2E 测试（11 个工具）
 - **CI/CD 模板** — 提供 GitLab CI 和 GitHub Actions 开箱即用模板
 
 ## 环境要求
@@ -231,6 +232,25 @@ dashboard:
 # ============ Docker 网络 ============
 network:
   name: e2e-network
+
+# ============ 韧性与自愈（可选） ============
+resilience:
+  preflight:                         # 预检健康检查
+    enabled: true                    # 启用预检（默认 true）
+    diskSpaceThreshold: "2GB"        # 最低磁盘空间阈值
+    cleanOrphans: true               # 自动清理孤儿资源
+  container:                         # 容器自动重启
+    restartOnFailure: true           # 容器崩溃时自动重启
+    maxRestarts: 3                   # 最大重启次数
+    restartDelay: "2s"               # 重启基础延迟
+    restartBackoff: exponential      # 退避策略: exponential | linear
+  network:                           # 网络韧性
+    portConflictStrategy: auto       # 端口冲突策略: auto | fail
+    verifyConnectivity: true         # 启动后验证 Mock 可达性
+  circuitBreaker:                    # 熔断器
+    enabled: true                    # 启用熔断保护
+    failureThreshold: 5              # 连续失败阈值
+    resetTimeoutMs: 30000            # 重置超时（毫秒）
 ```
 
 ## YAML 测试语法
@@ -463,26 +483,35 @@ ArgusAI 提供 MCP Server，让 AI 编程助手（如 Cursor、Claude Desktop）
 | 工具 | 说明 |
 |------|------|
 | `argus_init` | 初始化项目（加载 e2e.yaml） |
-| `argus_build` | 构建 Docker 镜像 |
-| `argus_setup` | 启动测试环境 |
+| `argus_build` | 构建 Docker 镜像（含熔断器保护） |
+| `argus_setup` | 启动测试环境（含预检、端口解析、孤儿清理、网络验证） |
 | `argus_run` | 运行所有/指定测试套件 |
 | `argus_run_suite` | 运行单个测试套件 |
 | `argus_status` | 查看环境状态 |
 | `argus_logs` | 查看容器日志 |
 | `argus_clean` | 清理资源 |
 | `argus_mock_requests` | 查看 Mock 请求录制 |
+| `argus_preflight_check` | 主动检查环境健康（Docker 守护进程、磁盘空间、孤儿资源） |
+| `argus_reset_circuit` | 重置熔断器状态（open → half-open） |
 
 ### AI 工作流示例
 
 通过 MCP，AI 助手可以执行完整的测试循环：
 
 ```
-1. argus_init(projectPath) → 加载项目配置
-2. argus_build(projectPath) → 构建镜像
-3. argus_setup(projectPath) → 启动环境
-4. argus_run(projectPath)   → 执行测试
-5. argus_logs(projectPath, container) → 查看失败日志
-6. argus_clean(projectPath) → 清理
+1. argus_preflight_check(projectPath)    → 检查环境健康（可选）
+2. argus_init(projectPath)               → 加载项目配置
+3. argus_build(projectPath)              → 构建镜像（熔断器保护）
+4. argus_setup(projectPath)              → 启动环境（预检 + 端口解析 + 孤儿清理 + 网络验证）
+5. argus_run(projectPath)                → 执行测试
+6. argus_logs(projectPath, container)    → 查看失败日志
+7. argus_clean(projectPath)              → 清理
+```
+
+当 Docker 环境异常时，AI 可以：
+```
+argus_preflight_check(projectPath, autoFix: true)  → 诊断并自动修复
+argus_reset_circuit(projectPath)                     → 重置熔断器
 ```
 
 ## Dashboard
@@ -557,7 +586,15 @@ argusai/
 │   │       ├── variable-resolver.ts  # 变量模板解析
 │   │       ├── test-runner.ts        # RunnerRegistry
 │   │       ├── reporters.ts          # Console/JSON/HTML 报告
-│   │       └── runners/              # 测试运行器实现
+│   │       ├── runners/              # 测试运行器实现
+│   │       └── resilience/           # 韧性与自愈子系统
+│   │           ├── error-codes.ts    #   结构化错误码（13 种）
+│   │           ├── preflight.ts      #   预检健康检查
+│   │           ├── container-guardian.ts  # 容器自动重启
+│   │           ├── port-resolver.ts  #   端口冲突规避
+│   │           ├── orphan-cleaner.ts #   孤儿资源清理
+│   │           ├── circuit-breaker.ts #  熔断器
+│   │           └── network-verifier.ts # 网络韧性验证
 │   │
 │   ├── cli/              # CLI 工具（argusai）
 │   ├── dashboard/        # 可视化面板（argusai-dashboard）
@@ -581,6 +618,22 @@ argusai/
 | Dashboard | React + Vite + Tailwind CSS |
 | 实时通信 | SSE (Server-Sent Events) |
 | 运行时 | Node.js >= 20 |
+
+## 韧性与自愈
+
+ArgusAI 内置了完整的错误恢复与自愈系统，将错误处理从「报错停止」升级为「恢复继续」。
+
+| 能力 | 说明 | 关键配置 |
+|------|------|---------|
+| **结构化错误码** | 13 种 AI 可解析的错误码（如 `DOCKER_UNAVAILABLE`、`PORT_CONFLICT`），附带类别、严重等级和修复建议 | — |
+| **预检健康检查** | 操作前自动检查 Docker 守护进程、磁盘空间、孤儿资源 | `resilience.preflight` |
+| **容器自动重启** | 崩溃容器自动诊断（exit code/OOM/日志）并退避重启 | `resilience.container` |
+| **端口冲突规避** | 自动检测被占用端口并分配替代端口，或快速失败 | `resilience.network.portConflictStrategy` |
+| **孤儿资源清理** | 通过 Docker Label 识别并清理上次运行残留的容器和网络 | `resilience.preflight.cleanOrphans` |
+| **熔断器** | Docker CLI 连续失败后自动熔断，所有后续操作 < 100ms 快速失败 | `resilience.circuitBreaker` |
+| **网络韧性** | 启动后验证 Mock 服务 DNS 可达性和 TCP 连通性 | `resilience.network.verifyConnectivity` |
+
+所有韧性事件通过 SSE 实时推送，Dashboard 可实时展示。
 
 ## 开发
 

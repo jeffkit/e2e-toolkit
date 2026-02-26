@@ -56,6 +56,14 @@ export interface DockerBuildOptions {
   noCache?: boolean;
 }
 
+/** Labels applied to all ArgusAI-managed Docker resources. */
+export interface ArgusDockerLabels {
+  'argusai.managed': 'true';
+  'argusai.project': string;
+  'argusai.run-id': string;
+  'argusai.created-at': string;
+}
+
 /** Options for running a Docker container */
 export interface DockerRunOptions {
   /** Container name */
@@ -78,6 +86,8 @@ export interface DockerRunOptions {
     retries: number;
     startPeriod: string;
   };
+  /** Docker labels to apply to the container */
+  labels?: Record<string, string>;
 }
 
 // =====================================================================
@@ -147,6 +157,12 @@ export function buildRunArgs(options: DockerRunOptions): string[] {
     args.push('--health-timeout', hc.timeout);
     args.push('--health-retries', String(hc.retries));
     args.push('--health-start-period', hc.startPeriod);
+  }
+
+  if (options.labels) {
+    for (const [key, value] of Object.entries(options.labels)) {
+      args.push('--label', `${key}=${value}`);
+    }
   }
 
   args.push(options.image);
@@ -361,9 +377,17 @@ export async function execInContainer(name: string, command: string): Promise<st
  * Ensure a Docker network exists. Creates it if missing, ignores if already present.
  *
  * @param name - Network name
+ * @param labels - Optional Docker labels to apply to the network
  */
-export async function ensureNetwork(name: string): Promise<void> {
-  await safeExecFileAsync('docker', ['network', 'create', name]);
+export async function ensureNetwork(name: string, labels?: Record<string, string>): Promise<void> {
+  const args = ['network', 'create'];
+  if (labels) {
+    for (const [key, value] of Object.entries(labels)) {
+      args.push('--label', `${key}=${value}`);
+    }
+  }
+  args.push(name);
+  await safeExecFileAsync('docker', args);
 }
 
 /**
@@ -542,6 +566,26 @@ export async function* streamContainerLogs(
       });
     }
   }
+}
+
+// =====================================================================
+// Docker Exec Helper (exported for resilience modules)
+// =====================================================================
+
+/**
+ * Execute a Docker CLI command and return stdout, or throw on failure.
+ *
+ * @param args - Arguments to pass to `docker` (e.g. ['info', '--format', '{{json .}}'])
+ * @param timeoutMs - Command timeout in milliseconds (default: 10000)
+ * @returns Trimmed stdout
+ */
+export async function dockerExec(args: string[], timeoutMs = 10_000): Promise<string> {
+  const finalArgs = dockerArgs(args);
+  const { stdout } = await execFileAsync('docker', finalArgs, {
+    encoding: 'utf-8',
+    timeout: timeoutMs,
+  });
+  return stdout.trim();
 }
 
 // =====================================================================

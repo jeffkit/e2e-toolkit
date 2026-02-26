@@ -5,6 +5,9 @@
 
 import {
   buildImage,
+  PreflightChecker,
+  ResilientDockerEngine,
+  ArgusError,
   type E2EConfig,
   type ServiceConfig,
   type ServiceDefinition,
@@ -66,16 +69,41 @@ export async function handleBuild(
   platform?: PlatformServices,
 ): Promise<BuildResult> {
   const session = sessionManager.getOrThrow(params.projectPath);
+  const bus = sessionManager.eventBus;
+
+  // Preflight gate: check Docker daemon and disk space before building
+  const resilienceConfig = session.config.resilience;
+  if (resilienceConfig?.preflight?.enabled !== false) {
+    const checker = new PreflightChecker(bus);
+    const dockerCheck = await checker.checkDockerDaemon();
+    if (dockerCheck.status === 'fail') {
+      throw new ArgusError('DOCKER_UNAVAILABLE', 'Docker daemon is not reachable', {
+        check: dockerCheck,
+      });
+    }
+    const diskCheck = await checker.checkDiskSpace(
+      resilienceConfig?.preflight?.diskSpaceThreshold ?? '2GB',
+    );
+    if (diskCheck.status === 'fail') {
+      throw new ArgusError('DISK_SPACE_LOW', diskCheck.message, {
+        check: diskCheck,
+      });
+    }
+  }
+
   const targets = getServicesToBuild(session.config, params.service);
 
   const totalStart = Date.now();
   const results: BuildResult['services'] = [];
-  const bus = sessionManager.eventBus;
 
   bus?.emit('activity', {
     event: 'activity_start',
     data: { id: `build-${totalStart}`, source: 'ai', operation: 'build', project: session.config.project.name, status: 'running', startTime: totalStart },
   });
+
+  const resilientEngine = session.circuitBreaker
+    ? new ResilientDockerEngine(session.circuitBreaker)
+    : undefined;
 
   for (const target of targets) {
     const buildStart = Date.now();
@@ -91,7 +119,11 @@ export async function handleBuild(
         noCache: params.noCache,
       };
 
-      for await (const event of buildImage(buildOpts)) {
+      const buildGen = resilientEngine
+        ? resilientEngine.buildImage(buildOpts)
+        : buildImage(buildOpts);
+
+      for await (const event of buildGen) {
         bus?.emit('build', { event: event.type, data: event });
         if (event.type === 'build_log') {
           lineNumber++;

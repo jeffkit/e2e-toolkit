@@ -142,6 +142,34 @@ export const NetworkSchema = z.object({
 }).describe('Docker network configuration');
 
 // =====================================================================
+// Resilience Configuration Schema
+// =====================================================================
+
+/** Resilience subsystem Zod schema with sensible defaults for all sub-sections. */
+export const ResilienceConfigSchema = z.object({
+  preflight: z.object({
+    enabled: z.boolean().default(true).describe('Enable automatic preflight health checks before setup/build'),
+    diskSpaceThreshold: z.string().default('2GB').describe('Minimum free disk space required (e.g. "2GB", "500MB")'),
+    cleanOrphans: z.boolean().default(true).describe('Auto-remove orphaned ArgusAI containers and networks'),
+  }).default({}).describe('Preflight environment health check configuration'),
+  container: z.object({
+    restartOnFailure: z.boolean().default(true).describe('Auto-restart containers that crash during test execution'),
+    maxRestarts: z.number().min(0).max(10).default(3).describe('Maximum restart attempts before giving up (0-10)'),
+    restartDelay: z.string().default('2s').describe('Base delay between restart attempts (e.g. "2s", "500ms")'),
+    restartBackoff: z.enum(['exponential', 'linear']).default('exponential').describe('Backoff strategy for restart delays'),
+  }).default({}).describe('Container failure recovery configuration'),
+  network: z.object({
+    portConflictStrategy: z.enum(['auto', 'fail']).default('auto').describe('How to handle port conflicts: "auto" finds alternatives, "fail" aborts'),
+    verifyConnectivity: z.boolean().default(true).describe('Verify mock service reachability before running tests'),
+  }).default({}).describe('Network resilience and port conflict resolution'),
+  circuitBreaker: z.object({
+    enabled: z.boolean().default(true).describe('Enable circuit breaker for Docker operations'),
+    failureThreshold: z.number().min(1).max(20).default(5).describe('Consecutive failures before circuit opens (1-20)'),
+    resetTimeoutMs: z.number().default(30000).describe('Time in ms before auto-transitioning from open to half-open'),
+  }).default({}).describe('Circuit breaker pattern for Docker CLI operations'),
+}).default({}).describe('Resilience subsystem configuration — error recovery, preflight, circuit breaker');
+
+// =====================================================================
 // Complete E2E Configuration Schema
 // =====================================================================
 
@@ -168,6 +196,7 @@ export const E2EConfigSchema = z.object({
   dashboard: DashboardSchema.optional().describe('Dashboard UI configuration'),
   network: NetworkSchema.optional().describe('Docker network configuration'),
   repos: z.array(RepoConfigSchema).optional().describe('Git repositories for branch selection and builds'),
+  resilience: ResilienceConfigSchema.optional().describe('Resilience subsystem — error recovery, preflight, circuit breaker'),
 }).describe('Preflight E2E test configuration');
 
 /** Validated configuration type inferred from the Zod schema */
