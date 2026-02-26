@@ -78,6 +78,8 @@ jobs:
       - name: Publish argusai-core
         if: steps.check.outputs.has_changesets == 'false'
         working-directory: packages/core
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           LOCAL_VER=$(node -p "require('./package.json').version")
           NPM_VER=$(npm view argusai-core version 2>/dev/null || echo "0.0.0")
@@ -91,6 +93,8 @@ jobs:
       - name: Publish argusai-mcp
         if: steps.check.outputs.has_changesets == 'false'
         working-directory: packages/mcp
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           LOCAL_VER=$(node -p "require('./package.json').version")
           NPM_VER=$(npm view argusai-mcp version 2>/dev/null || echo "0.0.0")
