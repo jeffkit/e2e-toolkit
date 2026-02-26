@@ -15,8 +15,10 @@
     "type-check": "tsc -b",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "pnpm build && pnpm test:run && changeset publish",
-    "release:dry": "pnpm build && changeset publish --dry-run",
+    "release": "pnpm release:build && pnpm release:test && changeset publish",
+    "release:build": "pnpm --filter argusai-core build && pnpm --filter argusai-mcp build",
+    "release:test": "pnpm --filter argusai-core test:run && pnpm --filter argusai-mcp test:run",
+    "release:dry": "pnpm release:build && changeset publish --dry-run",
     "publish:changed": "node scripts/publish-changed.mjs"
   },
   "engines": {
