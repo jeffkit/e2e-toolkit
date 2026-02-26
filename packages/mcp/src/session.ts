@@ -11,8 +11,8 @@
  */
 
 import type { E2EConfig, SSEBus, PortMapping, CircuitBreakerState, HistoryConfig } from 'argusai-core';
-import type { HistoryStore } from 'argusai-core';
-import { CircuitBreaker, createHistoryStore, HistoryRecorder } from 'argusai-core';
+import type { HistoryStore, KnowledgeStore } from 'argusai-core';
+import { CircuitBreaker, createHistoryStore, HistoryRecorder, SQLiteHistoryStore, SQLiteKnowledgeStore, NoopKnowledgeStore } from 'argusai-core';
 
 // =====================================================================
 // Types
@@ -44,6 +44,8 @@ export interface ProjectSession {
   historyStore?: HistoryStore;
   /** History recorder for post-run persistence */
   historyRecorder?: HistoryRecorder;
+  /** Knowledge store for failure pattern diagnostics */
+  knowledgeStore?: KnowledgeStore;
 }
 
 const VALID_TRANSITIONS: Record<SessionState, SessionState[]> = {
@@ -177,6 +179,7 @@ export class SessionManager {
 
     let historyStore: HistoryStore | undefined;
     let historyRecorder: HistoryRecorder | undefined;
+    let knowledgeStore: KnowledgeStore | undefined;
 
     const historyConfig = config.history as HistoryConfig | undefined;
     if (historyConfig?.enabled !== false) {
@@ -189,6 +192,12 @@ export class SessionManager {
         };
         historyStore = createHistoryStore(effectiveConfig, projectPath);
         historyRecorder = new HistoryRecorder(historyStore, effectiveConfig);
+
+        if (historyStore instanceof SQLiteHistoryStore) {
+          knowledgeStore = new SQLiteKnowledgeStore(historyStore.getDatabase());
+        } else {
+          knowledgeStore = new NoopKnowledgeStore();
+        }
       } catch {
         // Graceful degradation: history init failure is non-critical
       }
@@ -210,6 +219,7 @@ export class SessionManager {
       circuitBreaker,
       historyStore,
       historyRecorder,
+      knowledgeStore,
     };
 
     this.sessions.set(k, session);
@@ -325,6 +335,7 @@ export class SessionManager {
         mock.server.close().catch(() => {});
       }
       session.activeGuardians.clear();
+      try { session.knowledgeStore?.close(); } catch { /* ignore */ }
       try { session.historyStore?.close(); } catch { /* ignore */ }
     }
     this.sessions.clear();

@@ -14,6 +14,15 @@ export type {
   HistoryConfig,
 } from './history/types.js';
 
+// ==================== Knowledge Types (re-exported) ====================
+
+export type {
+  FailureCategory,
+  FailurePattern,
+  FixRecord,
+  DiagnosticResult,
+} from './knowledge/types.js';
+
 // ==================== 配置类型 ====================
 
 /** 健康检查配置 */

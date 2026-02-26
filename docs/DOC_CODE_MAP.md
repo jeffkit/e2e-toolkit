@@ -11,3 +11,6 @@
 | `specs/003-resilience/spec.md` | `packages/core/src/resilience/**` | 韧性与自愈功能规格 |
 | `specs/003-resilience/plan.md` | `packages/core/src/resilience/**`, `packages/mcp/src/tools/preflight-check.ts`, `packages/mcp/src/tools/reset-circuit.ts` | 韧性功能实现计划 |
 | `specs/003-resilience/tasks.md` | `packages/core/src/resilience/**`, `packages/mcp/src/**` | 韧性功能任务清单 |
+| `specs/005-diagnostics/spec.md` | `packages/core/src/knowledge/**` | 智能诊断建议功能规格 |
+| `specs/005-diagnostics/plan.md` | `packages/core/src/knowledge/**`, `packages/mcp/src/tools/diagnose.ts`, `packages/mcp/src/tools/report-fix.ts`, `packages/mcp/src/tools/patterns.ts` | 智能诊断建议实现计划 |
+| `specs/005-diagnostics/data-model.md` | `packages/core/src/knowledge/types.ts`, `packages/core/src/knowledge/knowledge-store.ts`, `packages/core/src/history/migrations.ts` | 诊断知识库数据模型 |

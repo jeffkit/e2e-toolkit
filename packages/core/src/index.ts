@@ -181,6 +181,9 @@ export * from './resilience/index.js';
 export * from './history/index.js';
 export { HistoryConfigSchema } from './config-loader.js';
 
+// Knowledge Subsystem (Diagnostics & Suggestions)
+export * from './knowledge/index.js';
+
 // Workspace Manager
 export {
   getWorkspacePath,

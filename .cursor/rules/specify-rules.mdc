@@ -5,6 +5,8 @@ Auto-generated from all feature plans. Last updated: 2026-02-25
 ## Active Technologies
 - TypeScript 5.x (strict mode), Node.js 20+ + better-sqlite3 (new), Recharts (new for Dashboard UI), zod, fastify 5.x, React + Vite + Tailwind CSS (existing) (004-history)
 - SQLite via better-sqlite3 (local mode), in-memory Map (test/CI mode) (004-history)
+- TypeScript 5.x (strict mode, ESM) + better-sqlite3 (existing), zod (existing), @modelcontextprotocol/sdk (existing), node:crypto (stdlib) (005-diagnostics)
+- SQLite via better-sqlite3 — new `failure_patterns` and `fix_history` tables in existing history.db (005-diagnostics)
 
 - TypeScript 5.x strict mode, Node.js 20+ LTS + @modelcontextprotocol/sdk ^1.11, Fastify 5.x, Zod 3.x, js-yaml 4.x, zod-to-json-schema 3.x, @playwright/test (optional peer) (002-ai-native)
 
@@ -24,6 +26,7 @@ npm test && npm run lint
 TypeScript 5.x strict mode, Node.js 20+ LTS: Follow standard conventions
 
 ## Recent Changes
+- 005-diagnostics: Added TypeScript 5.x (strict mode, ESM) + better-sqlite3 (existing), zod (existing), @modelcontextprotocol/sdk (existing), node:crypto (stdlib)
 - 004-history: Added TypeScript 5.x (strict mode), Node.js 20+ + better-sqlite3 (new), Recharts (new for Dashboard UI), zod, fastify 5.x, React + Vite + Tailwind CSS (existing)
 
 - 002-ai-native: Added TypeScript 5.x strict mode, Node.js 20+ LTS + @modelcontextprotocol/sdk ^1.11, Fastify 5.x, Zod 3.x, js-yaml 4.x, zod-to-json-schema 3.x, @playwright/test (optional peer)

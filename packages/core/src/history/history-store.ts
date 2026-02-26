@@ -44,6 +44,11 @@ export interface HistoryStore {
 export class SQLiteHistoryStore implements HistoryStore {
   private db: Database.Database;
 
+  /** Expose underlying database for shared subsystems (e.g. knowledge store). */
+  getDatabase(): Database.Database {
+    return this.db;
+  }
+
   constructor(dbPath: string) {
     const dir = path.dirname(dbPath);
     if (!fs.existsSync(dir)) {
