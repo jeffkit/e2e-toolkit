@@ -80,7 +80,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          PACKAGES=("core:argusai-core" "mcp:argusai-mcp" "cli:argusai" "dashboard:argusai-dashboard")
+          PACKAGES=("core:argusai-core" "mcp:argusai-mcp" "cli:argusai-cli" "dashboard:argusai-dashboard")
           PUBLISHED=()
 
           for entry in "${PACKAGES[@]}"; do
@@ -109,7 +109,7 @@ jobs:
       - name: Create git tags
         if: steps.check.outputs.has_changesets == 'false'
         run: |
-          PACKAGES=("core:argusai-core" "mcp:argusai-mcp" "cli:argusai" "dashboard:argusai-dashboard")
+          PACKAGES=("core:argusai-core" "mcp:argusai-mcp" "cli:argusai-cli" "dashboard:argusai-dashboard")
           for entry in "${PACKAGES[@]}"; do
             DIR="${entry%%:*}"
             NAME="${entry##*:}"
