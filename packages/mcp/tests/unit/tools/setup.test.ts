@@ -44,7 +44,11 @@ function setupSession(manager: SessionManager, projectPath = '/test/project'): v
       'api-mock': { port: 9100, routes: [{ method: 'GET', path: '/ok', response: { status: 200, body: {} } }] },
     },
     network: { name: 'test-net' },
-  };
+    resilience: {
+      preflight: { enabled: false },
+      circuitBreaker: { enabled: false },
+    },
+  } as E2EConfig;
   manager.create(projectPath, config, `${projectPath}/e2e.yaml`);
   manager.transition(projectPath, 'built');
 }
