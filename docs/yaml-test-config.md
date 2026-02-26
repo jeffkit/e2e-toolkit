@@ -1,6 +1,6 @@
 # YAML 测试用例配置参考
 
-> 最后更新：2026-02-25
+> 最后更新：2026-02-26
 
 本文档详细说明 preflight 的 YAML 测试用例配置语法、所有断言工具和使用示例。
 
@@ -23,6 +23,10 @@
   - [3.5 复合断言 (all / any)](#35-复合断言-all--any)
 - [4. Exec 输出断言 (expect.output)](#4-exec-输出断言-expectoutput)
 - [5. Body 断言操作符详解](#5-body-断言操作符详解)
+  - [5.1 基础操作符](#精确匹配)
+  - [5.2 数组遍历断言 (every / some)](#every--some--数组遍历断言)
+  - [5.3 否定断言 (not / notContains)](#not--否定包装器)
+  - [5.4 响应时间断言 (responseTime)](#responsetime--响应时间断言)
 - [6. 变量系统](#6-变量系统)
 - [7. Setup 与 Teardown](#7-setup-与-teardown)
 - [8. 完整示例](#8-完整示例)
@@ -612,6 +616,24 @@ body:
   code: { startsWith: "ERR_" }
 ```
 
+### `endsWith` — 后缀匹配
+
+```yaml
+body:
+  filename: { endsWith: ".json" }
+  path: { endsWith: "/" }
+```
+
+### `notContains` — 否定包含
+
+```yaml
+body:
+  # 字符串不包含
+  message: { notContains: "error" }
+  # 数组不包含指定元素
+  roles: { notContains: "banned" }
+```
+
 ### `length` — 长度断言
 
 ```yaml
@@ -655,6 +677,83 @@ body:
     length: { gte: 1 }
     matches: "^[A-Za-z]"
 ```
+
+### `every` / `some` — 数组遍历断言
+
+对数组中的元素进行批量条件检查。
+
+**`every` — 所有元素必须满足条件：**
+
+```yaml
+body:
+  users:
+    every:
+      email: { exists: true, matches: "@" }
+      name: { type: "string" }
+      role: { in: ["admin", "user", "guest"] }
+```
+
+空数组对 `every` 视为通过（vacuous truth）。
+
+**`some` — 至少一个元素满足条件：**
+
+```yaml
+body:
+  users:
+    some:
+      role: "admin"
+  scores:
+    some:
+      value: { gt: 90 }
+```
+
+空数组对 `some` 视为失败（无元素可匹配）。
+
+### `not` — 否定包装器
+
+对任意断言进行取反。内层断言通过时，`not` 使其失败；内层失败时，`not` 使其通过。
+
+```yaml
+body:
+  # 值不等于
+  status: { not: "error" }
+  # 不在集合内
+  code: { not: { in: [500, 502, 503] } }
+  # 不匹配正则
+  name: { not: { matches: "^test" } }
+```
+
+### `responseTime` — 响应时间断言
+
+断言 HTTP 请求的响应时间（毫秒）。仅适用于 `request` 步骤。
+
+```yaml
+cases:
+  - name: 健康检查响应快
+    request:
+      method: GET
+      path: /health
+    expect:
+      status: 200
+      responseTime: { lt: 200 }
+
+  - name: 搜索接口性能
+    request:
+      method: GET
+      path: /api/search?q=test
+    expect:
+      status: 200
+      responseTime: { lt: 2000 }
+
+  - name: 简写形式（最大耗时）
+    request:
+      method: GET
+      path: /api/fast
+    expect:
+      responseTime: 500
+```
+
+`responseTime` 支持操作符：`lt`、`lte`、`gt`、`gte`。纯数字等价于 `{ lt: N }`，表示不超过 N 毫秒。
 
 ---
 
