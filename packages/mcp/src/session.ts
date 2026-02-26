@@ -42,7 +42,7 @@ export interface ProjectSession {
 }
 
 const VALID_TRANSITIONS: Record<SessionState, SessionState[]> = {
-  initialized: ['built', 'stopped'],
+  initialized: ['built', 'running', 'stopped'],
   built: ['running', 'stopped'],
   running: ['stopped'],
   stopped: ['initialized'],

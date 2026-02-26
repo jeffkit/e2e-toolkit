@@ -60,7 +60,16 @@ export function resolveVariables(template: string, context: VariableContext): st
       return `{{${trimmed}}}`;
     }
 
-    // Runtime variables (custom / saved from test steps)
+    // Runtime variables: {{runtime.xxx}} or {{xxx}}
+    if (trimmed.startsWith('runtime.')) {
+      const runtimeKey = trimmed.slice(8);
+      const value = context.runtime[runtimeKey];
+      if (value !== undefined) {
+        return value;
+      }
+      return `{{${trimmed}}}`;
+    }
+
     const runtimeValue = context.runtime[trimmed];
     if (runtimeValue !== undefined) {
       return runtimeValue;
