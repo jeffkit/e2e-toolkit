@@ -364,6 +364,152 @@ export const projects = {
     }>('/projects/schema'),
 };
 
+// ==================== Trends & History ====================
+
+export interface PassRateDataPoint {
+  date: string;
+  passRate: number;
+  passed: number;
+  failed: number;
+  skipped: number;
+  runCount: number;
+}
+
+export interface DurationDataPoint {
+  date: string;
+  avgDuration: number;
+  minDuration: number;
+  maxDuration: number;
+  runCount: number;
+}
+
+export interface FlakyCase {
+  caseName: string;
+  suiteId: string;
+  score: number;
+  level: string;
+  recentResults: string[];
+  failCount: number;
+  totalRuns: number;
+}
+
+export interface FailureDataPoint {
+  date: string;
+  status: 'passed' | 'failed' | 'skipped' | 'no-run';
+  duration: number | null;
+  error: string | null;
+  runId: string | null;
+}
+
+export interface RunRecord {
+  id: string;
+  project: string;
+  timestamp: number;
+  gitCommit: string | null;
+  gitBranch: string | null;
+  configHash: string;
+  trigger: string;
+  duration: number;
+  passed: number;
+  failed: number;
+  skipped: number;
+  flaky: number;
+  status: 'passed' | 'failed';
+}
+
+export interface CaseRecord {
+  id: string;
+  runId: string;
+  suiteId: string;
+  caseName: string;
+  status: 'passed' | 'failed' | 'skipped';
+  duration: number;
+  attempts: number;
+  responseMs: number | null;
+  assertions: number | null;
+  error: string | null;
+  snapshot: string | null;
+}
+
+export interface FlakyInfoRecord {
+  caseName: string;
+  suiteId: string;
+  isFlaky: boolean;
+  score: number;
+  level: string;
+  recentResults: string[];
+  suggestion: string;
+  failCount: number;
+  totalRuns: number;
+}
+
+export const trends = {
+  passRate: (days = 30, suiteId?: string) =>
+    request<{
+      success: boolean;
+      period: { from: string; to: string };
+      granularity: string;
+      dataPoints: PassRateDataPoint[];
+    }>(`/trends/pass-rate?days=${days}${suiteId ? `&suiteId=${encodeURIComponent(suiteId)}` : ''}`),
+
+  duration: (days = 14, suiteId?: string) =>
+    request<{
+      success: boolean;
+      period: { from: string; to: string };
+      dataPoints: DurationDataPoint[];
+    }>(`/trends/duration?days=${days}${suiteId ? `&suiteId=${encodeURIComponent(suiteId)}` : ''}`),
+
+  flaky: (topN = 10, minScore = 0.01, suiteId?: string) =>
+    request<{
+      success: boolean;
+      cases: FlakyCase[];
+      totalFlaky: number;
+      analysisWindow: number;
+    }>(`/trends/flaky?topN=${topN}&minScore=${minScore}${suiteId ? `&suiteId=${encodeURIComponent(suiteId)}` : ''}`),
+
+  failures: (caseName: string, days = 7, suiteId?: string) =>
+    request<{
+      success: boolean;
+      caseName: string;
+      period: { from: string; to: string };
+      dataPoints: FailureDataPoint[];
+      summary: { totalRuns: number; failures: number; flakyScore: number; level: string };
+    }>(`/trends/failures?caseName=${encodeURIComponent(caseName)}&days=${days}${suiteId ? `&suiteId=${encodeURIComponent(suiteId)}` : ''}`),
+};
+
+export const runs = {
+  list: (limit = 20, offset = 0, status?: string, days?: number) => {
+    let url = `/runs?limit=${limit}&offset=${offset}`;
+    if (status) url += `&status=${status}`;
+    if (days) url += `&days=${days}`;
+    return request<{
+      success: boolean;
+      runs: RunRecord[];
+      pagination: { total: number; limit: number; offset: number; hasMore: boolean };
+    }>(url);
+  },
+
+  detail: (id: string) =>
+    request<{
+      success: boolean;
+      run: RunRecord;
+      cases: CaseRecord[];
+      flaky: FlakyInfoRecord[];
+    }>(`/runs/${encodeURIComponent(id)}`),
+
+  compare: (baseId: string, compareId: string) =>
+    request<{
+      success: boolean;
+      baseRun: RunRecord;
+      compareRun: RunRecord;
+      newFailures: Array<{ caseName: string; suiteId: string; error?: string | null; baseStatus: string; compareStatus: string }>;
+      fixed: Array<{ caseName: string; suiteId: string; baseStatus: string; compareStatus: string }>;
+      consistent: { passed: number; failed: number; skipped: number };
+      newCases: string[];
+      removedCases: string[];
+    }>(`/runs/${encodeURIComponent(baseId)}/compare/${encodeURIComponent(compareId)}`),
+};
+
 // ==================== Activities ====================
 
 export interface ActivityEntry {

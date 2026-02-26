@@ -234,12 +234,34 @@ export class SQLiteHistoryStore implements HistoryStore {
 // Factory
 // =====================================================================
 
+// =====================================================================
+// NoopHistoryStore — returned when history is disabled
+// =====================================================================
+
+export class NoopHistoryStore implements HistoryStore {
+  saveRun(): void { /* no-op */ }
+  getRuns(): GetRunsResult { return { runs: [], total: 0 }; }
+  getRunById(): null { return null; }
+  getCaseHistory(): TestCaseRunRecord[] { return []; }
+  getRunsInDateRange(): TestRunRecord[] { return []; }
+  getCasesForRun(): TestCaseRunRecord[] { return []; }
+  getDistinctCaseNames(): string[] { return []; }
+  cleanup(): number { return 0; }
+  close(): void { /* no-op */ }
+}
+
 /**
  * Create a HistoryStore based on config.
- * Returns SQLiteHistoryStore for 'local', MemoryHistoryStore for 'memory'.
+ * - Returns NoopHistoryStore when `enabled: false`
+ * - Returns MemoryHistoryStore for `storage: 'memory'`
+ * - Returns SQLiteHistoryStore for `storage: 'local'`, with fallback to MemoryHistoryStore on failure
  */
 export function createHistoryStore(config: HistoryConfig, projectDir: string): HistoryStore {
-  if (!config.enabled || config.storage === 'memory') {
+  if (!config.enabled) {
+    return new NoopHistoryStore();
+  }
+
+  if (config.storage === 'memory') {
     return new MemoryHistoryStore();
   }
 
@@ -249,7 +271,10 @@ export function createHistoryStore(config: HistoryConfig, projectDir: string): H
 
   try {
     return new SQLiteHistoryStore(dbPath);
-  } catch {
+  } catch (err) {
+    console.warn(
+      `[history] Failed to open SQLite at ${dbPath}, falling back to memory store: ${err instanceof Error ? err.message : String(err)}`,
+    );
     return new MemoryHistoryStore();
   }
 }

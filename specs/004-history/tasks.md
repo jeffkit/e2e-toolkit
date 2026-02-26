@@ -120,7 +120,7 @@
 
 ### Implementation for User Story 4
 
-- [ ] T033 [US4] Implement `historyRoutes` Fastify plugin in `packages/dashboard/server/routes/history.ts` with 7 endpoints per rest-api.md contract:
+- [X] T033 [US4] Implement `historyRoutes` Fastify plugin in `packages/dashboard/server/routes/history.ts` with 7 endpoints per rest-api.md contract:
   - `GET /api/trends/pass-rate` — daily pass-rate trend with `days` and `suiteId` params
   - `GET /api/trends/duration` — duration trend with `days` and `suiteId` params
   - `GET /api/trends/flaky` — flaky ranking with `topN`, `minScore`, `suiteId` params
@@ -128,12 +128,12 @@
   - `GET /api/runs` — paginated run list with `limit`, `offset`, `status`, `days` params
   - `GET /api/runs/:id` — single run detail with all cases and flaky info for failed cases
   - `GET /api/runs/:id/compare/:compareId` — run comparison (delegates to same compare logic as MCP)
-- [ ] T034 [US4] Register `historyRoutes` plugin in `packages/dashboard/server/index.ts`: import and `app.register(historyRoutes)`, ensure history store is accessible from the app context (via `app.decorate` or similar pattern matching existing route registration)
-- [ ] T035 [US4] Add `HistoryStore` initialization to dashboard server startup in `packages/dashboard/server/index.ts`: create store from project config on startup and on project switch, make available to route handlers
+- [X] T034 [US4] Register `historyRoutes` plugin in `packages/dashboard/server/index.ts`: import and `app.register(historyRoutes)`, ensure history store is accessible from the app context (via `app.decorate` or similar pattern matching existing route registration)
+- [X] T035 [US4] Add `HistoryStore` initialization to dashboard server startup in `packages/dashboard/server/index.ts`: create store from project config on startup and on project switch, make available to route handlers
 
 ### Tests for User Story 4
 
-- [ ] T036 [P] [US4] Write integration tests for history REST endpoints in `packages/dashboard/server/routes/history.test.ts`: test all 7 endpoints with seeded data, verify response shapes match rest-api.md contracts, test pagination, filters, 404 for missing run, 400 for missing caseName on failures endpoint — target 80%+ coverage
+- [X] T036 [P] [US4] Write integration tests for history REST endpoints in `packages/dashboard/server/routes/history.test.ts`: test all 7 endpoints with seeded data, verify response shapes match rest-api.md contracts, test pagination, filters, 404 for missing run, 400 for missing caseName on failures endpoint — target 80%+ coverage
 
 **Checkpoint**: US4 complete — all REST APIs are operational. Dashboard frontend can begin fetching trend data.
 
@@ -147,19 +147,19 @@
 
 ### Implementation for User Story 5
 
-- [ ] T037 [US5] Install `recharts` as a dependency in `packages/dashboard/package.json`
-- [ ] T038 [P] [US5] Add trend API client functions to `packages/dashboard/ui/lib/api.ts`: `trends.passRate(days?)`, `trends.duration(days?)`, `trends.flaky(topN?)`, `trends.failures(caseName, days?)`, `runs.list(limit?, offset?, status?)`, `runs.detail(id)`, `runs.compare(baseId, compareId)` — each returning typed responses matching rest-api.md contracts
-- [ ] T039 [P] [US5] Implement `PassRateChart` component in `packages/dashboard/ui/components/PassRateChart.tsx`: Recharts `ResponsiveContainer` + `LineChart` showing daily pass-rate with date X-axis and percentage Y-axis, daily/weekly toggle via prop, tooltip showing pass/fail/skip counts per day, green/red color coding for pass-rate thresholds
-- [ ] T040 [P] [US5] Implement `DurationChart` component in `packages/dashboard/ui/components/DurationChart.tsx`: Recharts `AreaChart` showing avg/min/max duration bands over time, tooltip with run count per day, formatted duration labels (ms → seconds)
-- [ ] T041 [P] [US5] Implement `FlakyTable` component in `packages/dashboard/ui/components/FlakyTable.tsx`: sortable table of flaky cases with columns: case name, suite, flaky score (with color-coded stability level badge), recent results (visual dots: green=pass, red=fail, gray=skip), total runs; click row to show detail
-- [ ] T042 [P] [US5] Implement `FailuresList` component in `packages/dashboard/ui/components/FailuresList.tsx`: list of recent failures with case name, suite, error summary (truncated), last failure date, flaky status badge; click to expand with full error and failure trend mini-chart
-- [ ] T043 [P] [US5] Implement `RunTimeline` component in `packages/dashboard/ui/components/RunTimeline.tsx`: vertical timeline of runs showing status indicator (green/red dot), timestamp, duration, pass/fail/skip counts, git branch badge, trigger source icon; load-more pagination at bottom
-- [ ] T044 [US5] Implement `TrendsPage` in `packages/dashboard/ui/pages/TrendsPage.tsx`: compose all 5 components, manage shared state (date range, suite filter), handle loading/error/empty states; empty state shows guidance message per acceptance scenario 6; use Tailwind responsive grid layout
-- [ ] T045 [US5] Add `trends` page entry to `main.tsx` in `packages/dashboard/ui/main.tsx`: add `'trends'` to `Page` type union, add `TrendsPage` import, add `trends: { label: '趋势分析', icon: '📈', component: <TrendsPage /> }` to pages record
+- [X] T037 [US5] Install `recharts` as a dependency in `packages/dashboard/package.json`
+- [X] T038 [P] [US5] Add trend API client functions to `packages/dashboard/ui/lib/api.ts`: `trends.passRate(days?)`, `trends.duration(days?)`, `trends.flaky(topN?)`, `trends.failures(caseName, days?)`, `runs.list(limit?, offset?, status?)`, `runs.detail(id)`, `runs.compare(baseId, compareId)` — each returning typed responses matching rest-api.md contracts
+- [X] T039 [P] [US5] Implement `PassRateChart` component in `packages/dashboard/ui/components/PassRateChart.tsx`: Recharts `ResponsiveContainer` + `LineChart` showing daily pass-rate with date X-axis and percentage Y-axis, daily/weekly toggle via prop, tooltip showing pass/fail/skip counts per day, green/red color coding for pass-rate thresholds
+- [X] T040 [P] [US5] Implement `DurationChart` component in `packages/dashboard/ui/components/DurationChart.tsx`: Recharts `AreaChart` showing avg/min/max duration bands over time, tooltip with run count per day, formatted duration labels (ms → seconds)
+- [X] T041 [P] [US5] Implement `FlakyTable` component in `packages/dashboard/ui/components/FlakyTable.tsx`: sortable table of flaky cases with columns: case name, suite, flaky score (with color-coded stability level badge), recent results (visual dots: green=pass, red=fail, gray=skip), total runs; click row to show detail
+- [X] T042 [P] [US5] Implement `FailuresList` component in `packages/dashboard/ui/components/FailuresList.tsx`: list of recent failures with case name, suite, error summary (truncated), last failure date, flaky status badge; click to expand with full error and failure trend mini-chart
+- [X] T043 [P] [US5] Implement `RunTimeline` component in `packages/dashboard/ui/components/RunTimeline.tsx`: vertical timeline of runs showing status indicator (green/red dot), timestamp, duration, pass/fail/skip counts, git branch badge, trigger source icon; load-more pagination at bottom
+- [X] T044 [US5] Implement `TrendsPage` in `packages/dashboard/ui/pages/TrendsPage.tsx`: compose all 5 components, manage shared state (date range, suite filter), handle loading/error/empty states; empty state shows guidance message per acceptance scenario 6; use Tailwind responsive grid layout
+- [X] T045 [US5] Add `trends` page entry to `main.tsx` in `packages/dashboard/ui/main.tsx`: add `'trends'` to `Page` type union, add `TrendsPage` import, add `trends: { label: '趋势分析', icon: '📈', component: <TrendsPage /> }` to pages record
 
 ### Tests for User Story 5
 
-- [ ] T046 [P] [US5] Write component tests for `TrendsPage` in `packages/dashboard/ui/pages/TrendsPage.test.tsx`: verify render with data, empty state rendering, date range filter interaction, suite filter interaction, loading states — target 80%+ coverage
+- [X] T046 [P] [US5] Write component tests for `TrendsPage` in `packages/dashboard/ui/pages/TrendsPage.test.tsx`: verify render with data, empty state rendering, date range filter interaction, suite filter interaction, loading states — target 80%+ coverage
 
 **Checkpoint**: US5 complete — the Trends page is fully functional with charts, tables, and timeline visualization.
 
@@ -173,14 +173,14 @@
 
 ### Implementation for User Story 6
 
-- [ ] T047 [US6] Enhance `SQLiteHistoryStore.cleanup()` in `packages/core/src/history/history-store.ts`: implement time-based cleanup parsing duration strings (e.g. `'90d'`, `'30d'`, `'7d'`) and computing cutoff timestamp, implement count-based cleanup deleting oldest runs beyond `maxRuns`, rely on `ON DELETE CASCADE` for case record cleanup, return total deleted count
-- [ ] T048 [US6] Implement graceful degradation in `HistoryRecorder` and `createHistoryStore` in `packages/core/src/history/history-recorder.ts` and `packages/core/src/history/history-store.ts`: when `enabled: false` return a no-op stub implementing `HistoryStore` interface; when store initialization fails (corrupted DB, disk error) log warning and fall back to `MemoryHistoryStore` per FR-017; when individual write fails log warning and continue test execution
-- [ ] T049 [US6] Add integration between `HistoryConfig.enabled` flag and all downstream consumers: MCP tools return `HISTORY_DISABLED` error code when history is disabled, REST API endpoints return 503 with descriptive message, Dashboard Trends page shows "History is disabled" state
-- [ ] T050 [US6] Re-export any new public APIs from `packages/core/src/history/index.ts`
+- [X] T047 [US6] Enhance `SQLiteHistoryStore.cleanup()` in `packages/core/src/history/history-store.ts`: implement time-based cleanup parsing duration strings (e.g. `'90d'`, `'30d'`, `'7d'`) and computing cutoff timestamp, implement count-based cleanup deleting oldest runs beyond `maxRuns`, rely on `ON DELETE CASCADE` for case record cleanup, return total deleted count
+- [X] T048 [US6] Implement graceful degradation in `HistoryRecorder` and `createHistoryStore` in `packages/core/src/history/history-recorder.ts` and `packages/core/src/history/history-store.ts`: when `enabled: false` return a no-op stub implementing `HistoryStore` interface; when store initialization fails (corrupted DB, disk error) log warning and fall back to `MemoryHistoryStore` per FR-017; when individual write fails log warning and continue test execution
+- [X] T049 [US6] Add integration between `HistoryConfig.enabled` flag and all downstream consumers: MCP tools return `HISTORY_DISABLED` error code when history is disabled, REST API endpoints return 503 with descriptive message, Dashboard Trends page shows "History is disabled" state
+- [X] T050 [US6] Re-export any new public APIs from `packages/core/src/history/index.ts`
 
 ### Tests for User Story 6
 
-- [ ] T051 [P] [US6] Write unit tests for configurable storage in `packages/core/tests/unit/history/storage-config.test.ts`: test `'local'` mode creates SQLite file at configured path, `'memory'` mode uses in-memory store, `enabled: false` returns no-op store, retention cleanup by time (`90d` → records older than 90 days removed), retention cleanup by count (keep only `maxRuns`), graceful degradation on corrupted DB file, default config values when no `history` section in `e2e.yaml`
+- [X] T051 [P] [US6] Write unit tests for configurable storage in `packages/core/tests/unit/history/storage-config.test.ts`: test `'local'` mode creates SQLite file at configured path, `'memory'` mode uses in-memory store, `enabled: false` returns no-op store, retention cleanup by time (`90d` → records older than 90 days removed), retention cleanup by count (keep only `maxRuns`), graceful degradation on corrupted DB file, default config values when no `history` section in `e2e.yaml`
 
 **Checkpoint**: US6 complete — storage is configurable for different environments with automatic retention and graceful degradation.
 
@@ -190,12 +190,12 @@
 
 **Purpose**: Final integration, re-exports, and validation across all user stories
 
-- [ ] T052 Add `export * from './history/index.js'` to `packages/core/src/index.ts` for public API surface
-- [ ] T052b [P] Integrate `HistoryRecorder` into Dashboard test execution path in `packages/dashboard/server/routes/tests.ts`: when tests are triggered from the Dashboard UI, pass `'dashboard'` as trigger source to ensure FR-003 coverage for all 4 trigger sources
-- [ ] T053 [P] Validate all history config defaults behave correctly when no `history` section is present in `e2e.yaml` — ensure history is enabled with local storage, 90d retention, 1000 maxRuns, flakyWindow of 10
-- [ ] T054 [P] Verify `better-sqlite3` prebuilt binaries resolve correctly for macOS (arm64 + x64) and Linux (x64) in CI; add `better-sqlite3` to `pnpm.overrides` if needed for consistent resolution
-- [ ] T055 [P] Ensure Dashboard server gracefully handles the case where no project is loaded (no active session) for all history endpoints — return 503 with descriptive error
-- [ ] T056 Run full history test suite and verify 80%+ overall coverage, 90%+ for `history-store.test.ts` and `flaky-detector.test.ts`
+- [X] T052 Add `export * from './history/index.js'` to `packages/core/src/index.ts` for public API surface
+- [X] T052b [P] Integrate `HistoryRecorder` into Dashboard test execution path in `packages/dashboard/server/routes/tests.ts`: when tests are triggered from the Dashboard UI, pass `'dashboard'` as trigger source to ensure FR-003 coverage for all 4 trigger sources
+- [X] T053 [P] Validate all history config defaults behave correctly when no `history` section is present in `e2e.yaml` — ensure history is enabled with local storage, 90d retention, 1000 maxRuns, flakyWindow of 10
+- [X] T054 [P] Verify `better-sqlite3` prebuilt binaries resolve correctly for macOS (arm64 + x64) and Linux (x64) in CI; add `better-sqlite3` to `pnpm.overrides` if needed for consistent resolution
+- [X] T055 [P] Ensure Dashboard server gracefully handles the case where no project is loaded (no active session) for all history endpoints — return 503 with descriptive error
+- [X] T056 Run full history test suite and verify 80%+ overall coverage, 90%+ for `history-store.test.ts` and `flaky-detector.test.ts`
 
 ---
 

@@ -5,7 +5,7 @@
 
 export * from './types.js';
 export type { HistoryStore, GetRunsOptions, GetRunsResult } from './history-store.js';
-export { SQLiteHistoryStore, createHistoryStore } from './history-store.js';
+export { SQLiteHistoryStore, NoopHistoryStore, createHistoryStore } from './history-store.js';
 export { MemoryHistoryStore } from './memory-history-store.js';
 export { HistoryRecorder } from './history-recorder.js';
 export type { SuiteRunResult, RunInput, RecordRunResult } from './history-recorder.js';

@@ -4,7 +4,7 @@
  * 所有路由按请求读取此状态，切换项目时原地更新。
  */
 
-import type { E2EConfig, ActivityEntry, Store, TaskQueue, Notifier, ResourceLimiter } from 'argusai-core';
+import type { E2EConfig, ActivityEntry, Store, TaskQueue, Notifier, ResourceLimiter, HistoryStore } from 'argusai-core';
 import { EventBus } from 'argusai-core';
 
 export interface AppState {
@@ -19,6 +19,8 @@ export interface AppState {
   taskQueue?: TaskQueue;
   notifier?: Notifier;
   resourceLimiter?: ResourceLimiter;
+  /** History store for test result persistence & trend analysis */
+  historyStore?: HistoryStore;
 }
 
 /** 全局单例状态 */
