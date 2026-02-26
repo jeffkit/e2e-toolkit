@@ -394,6 +394,11 @@ async function executeStep(
     return executePortStep(resolvedStep, containerName);
   }
 
+  // ── SSE step: consume Server-Sent Events stream ──
+  if (resolvedStep.sse) {
+    return executeSSEStep(resolvedStep, ctx);
+  }
+
   // ── Exec step: run command inside Docker container ──
   if (resolvedStep.exec) {
     return executeExecStep(resolvedStep, containerName);
@@ -401,7 +406,7 @@ async function executeStep(
 
   // ── HTTP request step ──
   if (!resolvedStep.request) {
-    return [`Step "${resolvedStep.name}" has no recognized step type (request, exec, file, process, or port)`];
+    return [`Step "${resolvedStep.name}" has no recognized step type (request, exec, file, process, port, or sse)`];
   }
 
   // Build the URL: prefer explicit url, otherwise baseUrl + path
@@ -558,6 +563,224 @@ async function executeStep(
     return errors;
   } finally {
     clearTimeout(timer);
+  }
+}
+
+// =====================================================================
+// Internal: SSE Step Execution
+// =====================================================================
+
+interface SSEEvent {
+  type: string;
+  data: string;
+  id?: string;
+}
+
+function parseSSEChunk(chunk: string): SSEEvent[] {
+  const events: SSEEvent[] = [];
+  const blocks = chunk.split(/\n\n+/).filter(Boolean);
+
+  for (const block of blocks) {
+    let eventType = 'message';
+    let data = '';
+    let id: string | undefined;
+
+    for (const line of block.split('\n')) {
+      if (line.startsWith('event:')) eventType = line.slice(6).trim();
+      else if (line.startsWith('data:')) data += (data ? '\n' : '') + line.slice(5).trim();
+      else if (line.startsWith('id:')) id = line.slice(3).trim();
+    }
+
+    if (data || eventType !== 'message') {
+      events.push({ type: eventType, data, id });
+    }
+  }
+
+  return events;
+}
+
+async function executeSSEStep(
+  step: TestStep,
+  ctx: VariableContext,
+): Promise<string[]> {
+  const sseConfig = step.sse!;
+  const url = sseConfig.url;
+  const method = (sseConfig.method || 'GET').toUpperCase();
+  const timeout = sseConfig.timeout ? parseTime(sseConfig.timeout) : 10_000;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+
+  const errors: string[] = [];
+  const collectedEvents: SSEEvent[] = [];
+
+  try {
+    const fetchOptions: RequestInit = {
+      method,
+      signal: controller.signal,
+      headers: {
+        Accept: 'text/event-stream',
+        ...(sseConfig.headers ?? {}),
+      },
+    };
+
+    if (sseConfig.body !== undefined && sseConfig.body !== null && method !== 'GET') {
+      const headers = fetchOptions.headers as Record<string, string>;
+      if (!headers['Content-Type'] && !headers['content-type']) {
+        headers['Content-Type'] = 'application/json';
+      }
+      fetchOptions.body = JSON.stringify(sseConfig.body);
+    }
+
+    const response = await fetch(url, fetchOptions);
+
+    if (step.expect?.status !== undefined) {
+      const statusResult = assertStatus(response.status, step.expect.status);
+      if (!statusResult.passed) {
+        errors.push(statusResult.message);
+        return errors;
+      }
+    }
+
+    if (step.expect?.headers) {
+      const responseHeaders: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        responseHeaders[key] = value;
+      });
+      const headerResults = assertHeaders(responseHeaders, step.expect.headers);
+      for (const result of headerResults) {
+        if (!result.passed) errors.push(result.message);
+      }
+    }
+
+    if (!response.body) {
+      errors.push('SSE response has no body stream');
+      return errors;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        const lastDoubleNewline = buffer.lastIndexOf('\n\n');
+        if (lastDoubleNewline !== -1) {
+          const completePart = buffer.slice(0, lastDoubleNewline + 2);
+          buffer = buffer.slice(lastDoubleNewline + 2);
+          const events = parseSSEChunk(completePart);
+          collectedEvents.push(...events);
+        }
+      }
+    } catch (e: unknown) {
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        // Timeout reached — normal for SSE consumption
+      } else {
+        throw e;
+      }
+    }
+
+    if (buffer.trim()) {
+      const events = parseSSEChunk(buffer);
+      collectedEvents.push(...events);
+    }
+
+    if (step.expect?.events) {
+      const evtExpect = step.expect.events;
+
+      if (evtExpect.minCount !== undefined && collectedEvents.length < evtExpect.minCount) {
+        errors.push(`SSE events: expected at least ${evtExpect.minCount}, got ${collectedEvents.length}`);
+      }
+
+      if (evtExpect.maxCount !== undefined && collectedEvents.length > evtExpect.maxCount) {
+        errors.push(`SSE events: expected at most ${evtExpect.maxCount}, got ${collectedEvents.length}`);
+      }
+
+      if (evtExpect.types) {
+        const receivedTypes = new Set(collectedEvents.map(e => e.type));
+        for (const expectedType of evtExpect.types) {
+          if (!receivedTypes.has(expectedType)) {
+            errors.push(`SSE events: expected event type "${expectedType}" not received (got: ${[...receivedTypes].join(', ')})`);
+          }
+        }
+      }
+
+      const allData = collectedEvents.map(e => e.data).join('\n');
+
+      if (evtExpect.dataContains) {
+        const needles = Array.isArray(evtExpect.dataContains) ? evtExpect.dataContains : [evtExpect.dataContains];
+        for (const needle of needles) {
+          if (!allData.includes(needle)) {
+            errors.push(`SSE data: expected to contain "${needle}"`);
+          }
+        }
+      }
+
+      if (evtExpect.dataNotContains) {
+        const needles = Array.isArray(evtExpect.dataNotContains) ? evtExpect.dataNotContains : [evtExpect.dataNotContains];
+        for (const needle of needles) {
+          if (allData.includes(needle)) {
+            errors.push(`SSE data: expected NOT to contain "${needle}"`);
+          }
+        }
+      }
+
+      if (evtExpect.first && collectedEvents.length > 0) {
+        const firstData = tryParseJSON(collectedEvents[0].data);
+        const firstResults = assertBody(firstData, evtExpect.first);
+        for (const result of firstResults) {
+          if (!result.passed) errors.push(`SSE first event: ${result.message}`);
+        }
+      }
+
+      if (evtExpect.last && collectedEvents.length > 0) {
+        const lastData = tryParseJSON(collectedEvents[collectedEvents.length - 1].data);
+        const lastResults = assertBody(lastData, evtExpect.last);
+        for (const result of lastResults) {
+          if (!result.passed) errors.push(`SSE last event: ${result.message}`);
+        }
+      }
+    }
+
+    if (step.save) {
+      const sseResult = {
+        eventCount: collectedEvents.length,
+        events: collectedEvents,
+        types: [...new Set(collectedEvents.map(e => e.type))],
+        firstEvent: collectedEvents[0] ?? null,
+        lastEvent: collectedEvents[collectedEvents.length - 1] ?? null,
+      };
+      for (const [varName, jsonPath] of Object.entries(step.save)) {
+        const value = getValueByPath(sseResult, jsonPath);
+        if (value !== undefined) {
+          ctx.runtime[varName] = String(value);
+        }
+      }
+    }
+
+    return errors;
+  } catch (e: unknown) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      errors.push(`SSE connection timed out after ${timeout}ms with ${collectedEvents.length} events`);
+      return errors;
+    }
+    errors.push(`SSE error: ${e instanceof Error ? e.message : String(e)}`);
+    return errors;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function tryParseJSON(str: string): unknown {
+  try {
+    return JSON.parse(str);
+  } catch {
+    return str;
   }
 }
 
