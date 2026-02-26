@@ -1,6 +1,6 @@
 {
   "name": "argusai",
-  "version": "0.2.0",
+  "version": "0.5.0",
   "type": "module",
   "description": "ArgusAI — AI-native end-to-end testing CLI. The hundred-eyed guardian for your code.",
   "license": "MIT",
