@@ -131,6 +131,7 @@ async function executeSuites(
 
   const containerName = getContainerName(session.config);
   const baseUrl = getBaseUrl(session.config);
+  const configVars = getConfigVars(session.config);
 
   for (const suiteConfig of suites) {
     const events: TestEvent[] = [];
@@ -143,7 +144,7 @@ async function executeSuites(
 
         for await (const event of executeYAMLSuite(yamlSuite, {
           baseUrl,
-          variables: { config: {}, runtime: {}, env: { ...process.env } as Record<string, string> },
+          variables: { config: configVars, runtime: {}, env: { ...process.env } as Record<string, string> },
           containerName,
         })) {
           events.push(event);
@@ -266,6 +267,7 @@ function getContainerName(config: import('argusai-core').E2EConfig): string | un
 
 function getBaseUrl(config: import('argusai-core').E2EConfig): string {
   const svc = config.services?.[0] ?? config.service;
+  if (svc?.vars?.['base_url']) return svc.vars['base_url'];
   if (!svc) return 'http://localhost:3000';
 
   const ports = svc.container.ports;
@@ -274,4 +276,17 @@ function getBaseUrl(config: import('argusai-core').E2EConfig): string {
     return `http://localhost:${hostPort}`;
   }
   return 'http://localhost:3000';
+}
+
+function getConfigVars(config: import('argusai-core').E2EConfig): Record<string, string> {
+  const vars: Record<string, string> = {};
+  if (config.service?.vars) {
+    Object.assign(vars, config.service.vars);
+  }
+  if (config.services) {
+    for (const svc of config.services) {
+      if (svc.vars) Object.assign(vars, svc.vars);
+    }
+  }
+  return vars;
 }
