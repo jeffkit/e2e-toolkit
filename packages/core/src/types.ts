@@ -446,6 +446,19 @@ export interface TestStep {
   process?: ProcessAssertConfig;
   /** 端口监听断言 */
   port?: PortAssertConfig;
+  /** SSE (Server-Sent Events) 流消费 */
+  sse?: {
+    /** SSE 端点 URL（完整 URL） */
+    url: string;
+    /** POST body（如果需要 POST 方式发起 SSE） */
+    body?: unknown;
+    /** 请求方法（默认 GET；AI 聊天 API 通常用 POST） */
+    method?: string;
+    /** 请求头 */
+    headers?: Record<string, string>;
+    /** 最大监听时长（默认 10s） */
+    timeout?: string;
+  };
   expect?: {
     status?: number | number[];
     headers?: Record<string, unknown>;
@@ -473,6 +486,23 @@ export interface TestStep {
     all?: Array<Record<string, unknown>>;
     /** 复合断言 - 任一通过 (OR) */
     any?: Array<Record<string, unknown>>;
+    /** SSE 事件断言 */
+    events?: {
+      /** 最小事件数量 */
+      minCount?: number;
+      /** 最大事件数量 */
+      maxCount?: number;
+      /** 必须包含的事件类型 */
+      types?: string[];
+      /** 事件数据包含指定文本 */
+      dataContains?: string | string[];
+      /** 事件数据不包含指定文本 */
+      dataNotContains?: string | string[];
+      /** 第一个事件的断言 */
+      first?: Record<string, unknown>;
+      /** 最后一个事件的断言 */
+      last?: Record<string, unknown>;
+    };
   };
   /** 保存响应变量 */
   save?: Record<string, string>;
