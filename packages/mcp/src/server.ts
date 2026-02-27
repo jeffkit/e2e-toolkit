@@ -1,6 +1,6 @@
 /**
  * @module server
- * MCP server setup — registers all 20 tools with Zod input schemas.
+ * MCP server setup — registers all 21 tools with Zod input schemas.
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -28,6 +28,7 @@ import { handleReportFix } from './tools/report-fix.js';
 import { handlePatterns } from './tools/patterns.js';
 import { handleMockGenerate } from './tools/mock-generate.js';
 import { handleMockValidate } from './tools/mock-validate.js';
+import { handleResources } from './tools/resources.js';
 
 /** Shared platform services injected into tool handlers. */
 export interface PlatformServices {
@@ -471,6 +472,20 @@ export function createServer(options?: CreateServerOptions): {
     async (params) => {
       try {
         const result = await handleMockValidate(params, sessionManager);
+        return successResponse(result);
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
+  // Tool 21: argus_resources (multi-project isolation — list all managed Docker resources)
+  server.tool(
+    'argus_resources',
+    {},
+    async () => {
+      try {
+        const result = await handleResources(sessionManager);
         return successResponse(result);
       } catch (err) {
         return handleError(err);

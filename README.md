@@ -9,12 +9,15 @@ ArgusAI 是一个声明式的 E2E 测试框架，通过 YAML 配置文件描述�
 - **YAML 驱动** — 声明式定义测试环境和用例，零脚本编写
 - **Docker 原生** — 自动构建镜像、管理容器、配置网络和健康检查
 - **Mock 服务** — 内置 Mock 服务器，通过配置快速模拟外部依赖
+- **OpenAPI 智能 Mock** — 从 OpenAPI 3.0/3.1 spec 自动生成 Mock 路由，支持请求验证、录制/回放
 - **多运行器** — 支持 YAML / Vitest / pytest / Shell / Exec / Playwright 等多种测试运行器
 - **断言 DSL** — 丰富的断言语法，支持精确匹配、正则、类型检查、存在性验证等
 - **变量系统** — 支持 `{{config.*}}`、`{{env.*}}`、`{{runtime.*}}` 模板变量
 - **韧性自愈** — 结构化错误码、预检健康检查、容器自动重启、端口冲突规避、孤儿资源清理、熔断器保护
-- **可视化 Dashboard** — 实时查看测试执行状态、容器日志、Mock 请求录制
-- **MCP Server** — AI 原生集成，让 Cursor/Claude 等编程助手直接运行 E2E 测试（11 个工具）
+- **测试持久化与趋势分析** — SQLite 持久化测试结果，Flaky Test 识别，通过率/时长趋势分析
+- **智能诊断建议** — 失败自动分类、错误签名匹配、修复知识库、置信度评分、修复反馈闭环
+- **可视化 Dashboard** — 实时查看测试执行状态、容器日志、Mock 请求录制、趋势分析
+- **MCP Server** — AI 原生集成，让 Cursor/Claude 等编程助手直接运行 E2E 测试（20 个工具）
 - **CI/CD 模板** — 提供 GitLab CI 和 GitHub Actions 开箱即用模板
 
 ## 环境要求
@@ -216,6 +219,20 @@ mocks:
           status: 200
           body: { status: "ok" }
 
+  # OpenAPI 智能 Mock（从 spec 自动生成路由）
+  payment-api:
+    port: 9082
+    openapi: ./specs/payment.yaml # OpenAPI 3.0/3.1 spec 文件
+    mode: auto                    # auto | record | replay | smart
+    validate: true                # 请求验证（不符合 schema 返回 422）
+    target: http://real-api:8080  # record 模式的目标地址
+    overrides:                    # 手动覆盖自动生成的路由
+      - method: POST
+        path: /api/charge
+        response:
+          status: 200
+          body: { charged: true }
+
 # ============ 测试套件 ============
 tests:
   suites:
@@ -232,6 +249,13 @@ dashboard:
 # ============ Docker 网络 ============
 network:
   name: e2e-network
+
+# ============ 测试持久化（可选） ============
+history:
+  enabled: true
+  storage: local              # local | memory
+  retention: 90d              # 保留天数
+  flakyWindow: 10             # Flaky 检测滑动窗口大小
 
 # ============ 韧性与自愈（可选） ============
 resilience:
@@ -493,6 +517,15 @@ ArgusAI 提供 MCP Server，让 AI 编程助手（如 Cursor、Claude Desktop）
 | `argus_mock_requests` | 查看 Mock 请求录制 |
 | `argus_preflight_check` | 主动检查环境健康（Docker 守护进程、磁盘空间、孤儿资源） |
 | `argus_reset_circuit` | 重置熔断器状态（open → half-open） |
+| `argus_history` | 查询历史运行记录（支持过滤、分页） |
+| `argus_trends` | 获取趋势数据（通过率、时长、flaky 排行） |
+| `argus_flaky` | 获取 Flaky Test 列表（按不稳定程度排序） |
+| `argus_compare` | 对比两次运行的差异 |
+| `argus_diagnose` | 智能失败诊断（分类 + 知识库匹配 + 修复建议） |
+| `argus_report_fix` | 回报修复结果（更新知识库置信度） |
+| `argus_patterns` | 查看/搜索失败模式知识库 |
+| `argus_mock_generate` | 从 OpenAPI spec 生成 Mock YAML 配置 |
+| `argus_mock_validate` | 验证 Mock 配置对 OpenAPI spec 的覆盖度 |
 
 ### AI 工作流示例
 
@@ -508,10 +541,24 @@ ArgusAI 提供 MCP Server，让 AI 编程助手（如 Cursor、Claude Desktop）
 7. argus_clean(projectPath)              → 清理
 ```
 
+当测试失败时，AI 可以智能诊断：
+```
+argus_diagnose(projectPath, runId, caseName)  → 分类失败 + 匹配知识库 + 获取修复建议
+argus_flaky(projectPath)                       → 检查是否为 Flaky Test
+argus_report_fix(projectPath, runId, ...)      → 修复成功后反馈，提升知识库置信度
+```
+
 当 Docker 环境异常时，AI 可以：
 ```
 argus_preflight_check(projectPath, autoFix: true)  → 诊断并自动修复
 argus_reset_circuit(projectPath)                     → 重置熔断器
+```
+
+查询历史趋势：
+```
+argus_history(projectPath, limit: 20)          → 最近 20 次运行记录
+argus_trends(projectPath, metric: "pass-rate") → 通过率趋势
+argus_compare(projectPath, runId1, runId2)     → 对比两次运行差异
 ```
 
 ## Dashboard
@@ -529,6 +576,7 @@ argusai dashboard
 - Mock 服务请求录制查看
 - API Explorer（支持自定义预设端点）
 - 配置编辑器
+- **趋势分析页面** — 通过率折线图、执行时间趋势、Flaky Test 排行、运行时间轴
 
 ## 报告格式
 
@@ -587,14 +635,32 @@ argusai/
 │   │       ├── test-runner.ts        # RunnerRegistry
 │   │       ├── reporters.ts          # Console/JSON/HTML 报告
 │   │       ├── runners/              # 测试运行器实现
-│   │       └── resilience/           # 韧性与自愈子系统
-│   │           ├── error-codes.ts    #   结构化错误码（13 种）
-│   │           ├── preflight.ts      #   预检健康检查
-│   │           ├── container-guardian.ts  # 容器自动重启
-│   │           ├── port-resolver.ts  #   端口冲突规避
-│   │           ├── orphan-cleaner.ts #   孤儿资源清理
-│   │           ├── circuit-breaker.ts #  熔断器
-│   │           └── network-verifier.ts # 网络韧性验证
+│   │       ├── resilience/           # 韧性与自愈子系统
+│   │       │   ├── error-codes.ts    #   结构化错误码（13 种）
+│   │       │   ├── preflight.ts      #   预检健康检查
+│   │       │   ├── container-guardian.ts  # 容器自动重启
+│   │       │   ├── port-resolver.ts  #   端口冲突规避
+│   │       │   ├── orphan-cleaner.ts #   孤儿资源清理
+│   │       │   ├── circuit-breaker.ts #  熔断器
+│   │       │   └── network-verifier.ts # 网络韧性验证
+│   │       ├── history/              # 测试持久化与趋势分析
+│   │       │   ├── history-store.ts  #   SQLite 持久化存储
+│   │       │   ├── memory-history-store.ts # 内存存储（测试/CI 用）
+│   │       │   ├── history-recorder.ts #  测试运行记录器
+│   │       │   ├── flaky-detector.ts #   Flaky Test 识别引擎
+│   │       │   └── migrations.ts     #   数据库迁移
+│   │       ├── knowledge/            # 智能诊断与知识库
+│   │       │   ├── classifier.ts     #   失败分类器（10 类）
+│   │       │   ├── normalizer.ts     #   错误消息规范化
+│   │       │   ├── diagnostics-engine.ts # 诊断引擎
+│   │       │   ├── knowledge-store.ts #  修复知识库存储
+│   │       │   └── built-in-patterns.ts # 内置失败模式
+│   │       └── openapi/              # OpenAPI 智能 Mock
+│   │           ├── spec-loader.ts    #   OpenAPI 3.0/3.1 解析器
+│   │           ├── route-builder.ts  #   Mock 路由生成
+│   │           ├── response-generator.ts # 响应体生成
+│   │           ├── request-validator.ts # 请求 schema 验证
+│   │           └── recorder.ts       #   录制/回放引擎
 │   │
 │   ├── cli/              # CLI 工具（argusai）
 │   ├── dashboard/        # 可视化面板（argusai-dashboard）
@@ -613,9 +679,13 @@ argusai/
 | 配置验证 | Zod |
 | YAML 解析 | js-yaml |
 | Mock 服务器 | Fastify |
+| OpenAPI 解析 | @readme/openapi-parser |
+| 请求验证 | Ajv |
 | Docker 操作 | Docker CLI (child_process) |
 | CLI 框架 | Commander.js |
+| 持久化存储 | better-sqlite3 (WAL mode) |
 | Dashboard | React + Vite + Tailwind CSS |
+| 图表 | Recharts |
 | 实时通信 | SSE (Server-Sent Events) |
 | 运行时 | Node.js >= 20 |
 
@@ -634,6 +704,69 @@ ArgusAI 内置了完整的错误恢复与自愈系统，将错误处理从「报
 | **网络韧性** | 启动后验证 Mock 服务 DNS 可达性和 TCP 连通性 | `resilience.network.verifyConnectivity` |
 
 所有韧性事件通过 SSE 实时推送，Dashboard 可实时展示。
+
+## 测试持久化与趋势分析
+
+ArgusAI 自动持久化每次测试运行的结果，支持 Flaky Test 识别和趋势分析。
+
+```yaml
+history:
+  enabled: true
+  storage: local       # local (SQLite) | memory (CI/测试)
+  retention: 90d       # 保留天数
+  flakyWindow: 10      # Flaky 检测滑动窗口大小
+```
+
+| 能力 | 说明 |
+|------|------|
+| **自动持久化** | 每次 `argus_run` 的结果自动写入 SQLite |
+| **Flaky 识别** | 滑动窗口算法，5 级稳定性分类（STABLE → BROKEN） |
+| **趋势分析** | 通过率、执行时长、Flaky 排行、运行对比 |
+| **Dashboard** | 通过率折线图、时长趋势、Flaky 排行表、运行时间轴 |
+
+AI Agent 使用场景：测试失败 → 查询 flaky score → 判断是否为已知不稳定测试 → 决定忽略或修复。
+
+## 智能诊断建议
+
+内置失败模式知识库，自动分类诊断失败原因并给出修复建议。
+
+| 能力 | 说明 |
+|------|------|
+| **失败分类** | 10 类自动分类（ASSERTION_MISMATCH、HTTP_ERROR、TIMEOUT 等） |
+| **错误签名** | 规范化错误消息 + SHA-256 签名，精确匹配历史模式 |
+| **修复知识库** | 内置 6 个常见模式 + 自学习模式，Laplace 平滑置信度评分 |
+| **反馈闭环** | Agent 修复成功后通过 `argus_report_fix` 反馈，持续提升知识库质量 |
+
+AI Agent 使用场景：测试失败 → `argus_diagnose` 自动分类 → 匹配知识库 → 获取修复建议和置信度 → 修复后反馈。
+
+## OpenAPI 智能 Mock
+
+从 OpenAPI 3.0/3.1 spec 一键生成 Mock 路由，支持请求验证和录制/回放。
+
+```yaml
+mocks:
+  payment-api:
+    port: 9082
+    openapi: ./specs/payment.yaml   # OpenAPI spec 文件
+    mode: auto                       # auto | record | replay | smart
+    validate: true                   # 请求 schema 验证（不符合返回 422）
+    target: http://real-api:8080     # record 模式的代理目标
+    overrides:                       # 手动覆盖路由（优先级最高）
+      - method: POST
+        path: /api/charge
+        response:
+          status: 200
+          body: { charged: true }
+```
+
+| 模式 | 行为 |
+|------|------|
+| `auto` | 基于 OpenAPI schema 自动生成响应（优先使用 example 字段） |
+| `record` | 代理请求到真实 API 并录制响应 |
+| `replay` | 从录制文件回放响应 |
+| `smart` | 有录制就回放，没有就自动生成 |
+
+通过 `X-Mock-Status` request header 可切换返回的 HTTP 状态码。
 
 ## 开发
 

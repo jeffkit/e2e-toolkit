@@ -205,6 +205,26 @@ export interface E2EConfig {
   resilience?: ResilienceConfig;
   /** History subsystem configuration (test result persistence, flaky detection) */
   history?: _HistoryConfig;
+  /** Multi-project isolation configuration */
+  isolation?: IsolationConfig;
+}
+
+// ==================== Isolation Config ====================
+
+/** Multi-project isolation and resource namespace configuration. */
+export interface IsolationConfig {
+  /**
+   * Custom namespace prefix for Docker resources (containers, networks).
+   * Defaults to a slug derived from the project name.
+   * Used to prevent resource name collisions when multiple projects run simultaneously.
+   */
+  namespace?: string;
+  /**
+   * Port allocation range [start, end] (inclusive) for auto-assignment.
+   * When PortResolver needs to reassign a conflicting port, it picks from this range.
+   * Defaults to [9000, 9999].
+   */
+  portRange?: [number, number];
 }
 
 // ==================== Resilience Config ====================

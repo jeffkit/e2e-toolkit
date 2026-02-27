@@ -207,6 +207,18 @@ export const HistoryConfigSchema = z.object({
 }).default({}).describe('Test result history persistence and flaky detection configuration');
 
 // =====================================================================
+// Isolation Configuration Schema
+// =====================================================================
+
+/** Multi-project isolation Zod schema. */
+export const IsolationConfigSchema = z.object({
+  namespace: z.string().optional()
+    .describe('Custom namespace prefix for Docker resources (containers, networks). Defaults to a slug of the project name.'),
+  portRange: z.tuple([z.number().min(1024).max(65535), z.number().min(1024).max(65535)]).optional()
+    .describe('Port allocation range [start, end] (inclusive) for auto-assignment. Defaults to [9000, 9999].'),
+}).optional().describe('Multi-project isolation and resource namespace configuration');
+
+// =====================================================================
 // Complete E2E Configuration Schema
 // =====================================================================
 
@@ -235,6 +247,7 @@ export const E2EConfigSchema = z.object({
   repos: z.array(RepoConfigSchema).optional().describe('Git repositories for branch selection and builds'),
   resilience: ResilienceConfigSchema.optional().describe('Resilience subsystem — error recovery, preflight, circuit breaker'),
   history: HistoryConfigSchema.optional().describe('Test result history persistence and flaky detection'),
+  isolation: IsolationConfigSchema.describe('Multi-project isolation — namespace, port range'),
 }).describe('Preflight E2E test configuration');
 
 /** Validated configuration type inferred from the Zod schema */

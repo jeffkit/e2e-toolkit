@@ -131,6 +131,10 @@ export type {
   ResourceLimiterOptions,
 } from './resource-limiter.js';
 
+// Port Allocator (multi-project isolation)
+export { PortAllocator } from './port-allocator.js';
+export type { PortClaim, PortAllocatorOptions } from './port-allocator.js';
+
 // Runtime (container execution abstraction)
 export {
   DockerRuntime,

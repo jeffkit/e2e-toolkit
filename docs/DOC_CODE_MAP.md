@@ -2,7 +2,7 @@
 
 | 文档路径 | 代码路径模式 | 说明 |
 |----------|-------------|------|
-| `README.md` | `packages/cli/src/**`, `packages/core/src/**`, `packages/mcp/src/**` | 项目总览文档 |
+| `README.md` | `packages/cli/src/**`, `packages/core/src/**`, `packages/mcp/src/**`, `packages/dashboard/src/**` | 项目总览文档 |
 | `docs/ONBOARDING.md` | `packages/cli/src/commands/**`, `packages/core/src/config-loader.ts` | 业务接入指南 |
 | `docs/yaml-test-config.md` | `packages/core/src/types.ts`, `packages/core/src/yaml-engine.ts`, `packages/core/src/assertion-engine.ts` | YAML 测试配置参考文档 |
 | `ci-templates/gitlab-ci.yml` | `packages/cli/src/commands/**` | GitLab CI 模板 |
@@ -14,3 +14,10 @@
 | `specs/005-diagnostics/spec.md` | `packages/core/src/knowledge/**` | 智能诊断建议功能规格 |
 | `specs/005-diagnostics/plan.md` | `packages/core/src/knowledge/**`, `packages/mcp/src/tools/diagnose.ts`, `packages/mcp/src/tools/report-fix.ts`, `packages/mcp/src/tools/patterns.ts` | 智能诊断建议实现计划 |
 | `specs/005-diagnostics/data-model.md` | `packages/core/src/knowledge/types.ts`, `packages/core/src/knowledge/knowledge-store.ts`, `packages/core/src/history/migrations.ts` | 诊断知识库数据模型 |
+| `specs/004-history/spec.md` | `packages/core/src/history/**` | 测试持久化与趋势分析功能规格 |
+| `specs/004-history/plan.md` | `packages/core/src/history/**`, `packages/mcp/src/tools/history.ts`, `packages/mcp/src/tools/trends.ts`, `packages/dashboard/src/pages/Trends.tsx` | 测试持久化实现计划 |
+| `specs/004-history/tasks.md` | `packages/core/src/history/**`, `packages/mcp/src/**`, `packages/dashboard/**` | 测试持久化任务清单 |
+| `specs/005-diagnostics/tasks.md` | `packages/core/src/knowledge/**`, `packages/mcp/src/**` | 智能诊断建议任务清单 |
+| `specs/006-openapi-mock/spec.md` | `packages/core/src/openapi/**` | OpenAPI 智能 Mock 功能规格 |
+| `specs/006-openapi-mock/plan.md` | `packages/core/src/openapi/**`, `packages/core/src/mock-generator.ts`, `packages/mcp/src/tools/mock-generate.ts`, `packages/mcp/src/tools/mock-validate.ts` | OpenAPI Mock 实现计划 |
+| `specs/006-openapi-mock/tasks.md` | `packages/core/src/openapi/**`, `packages/core/src/mock-generator.ts`, `packages/mcp/src/**` | OpenAPI Mock 任务清单 |

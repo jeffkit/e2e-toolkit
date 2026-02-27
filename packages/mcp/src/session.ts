@@ -12,7 +12,7 @@
 
 import type { E2EConfig, SSEBus, PortMapping, CircuitBreakerState, HistoryConfig } from 'argusai-core';
 import type { HistoryStore, KnowledgeStore } from 'argusai-core';
-import { CircuitBreaker, createHistoryStore, HistoryRecorder, SQLiteHistoryStore, SQLiteKnowledgeStore, NoopKnowledgeStore } from 'argusai-core';
+import { CircuitBreaker, createHistoryStore, HistoryRecorder, SQLiteHistoryStore, SQLiteKnowledgeStore, NoopKnowledgeStore, PortAllocator } from 'argusai-core';
 
 // =====================================================================
 // Types
@@ -57,6 +57,46 @@ const VALID_TRANSITIONS: Record<SessionState, SessionState[]> = {
 
 /** Default session TTL: 2 hours of inactivity */
 const DEFAULT_TTL_MS = 2 * 60 * 60 * 1000;
+
+// =====================================================================
+// Namespace helpers
+// =====================================================================
+
+/**
+ * Derive a Docker-safe network name for a project.
+ *
+ * Priority:
+ * 1. `isolation.namespace` — explicit override
+ * 2. `network.name` — backward-compatible explicit network name
+ * 3. `argusai-<slug>-network` — default project-scoped name
+ *
+ * The slug lowercases the project name and replaces non-alphanumeric
+ * characters with hyphens, so "My App" → "argusai-my-app-network".
+ */
+export function deriveNetworkName(config: E2EConfig): string {
+  if (config.isolation?.namespace) {
+    return `argusai-${config.isolation.namespace}-network`;
+  }
+  const slug = config.project.name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return `argusai-${slug}-network`;
+}
+
+/**
+ * Derive the project namespace string (without -network suffix).
+ * Used as a prefix for container names and Docker labels.
+ */
+export function deriveNamespace(config: E2EConfig): string {
+  if (config.isolation?.namespace) {
+    return config.isolation.namespace;
+  }
+  return config.project.name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
 /** Cleanup check interval: every 5 minutes */
 const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -165,7 +205,7 @@ export class SessionManager {
       throw new SessionError('SESSION_EXISTS', `Session already exists for project: ${projectPath} (client: ${clientId})`);
     }
 
-    const networkName = config.network?.name ?? 'e2e-network';
+    const networkName = config.network?.name ?? deriveNetworkName(config);
     const now = Date.now();
 
     const cbConfig = config.resilience?.circuitBreaker;
@@ -227,10 +267,14 @@ export class SessionManager {
   }
 
   /**
-   * Remove a session and release any held lock.
+   * Remove a session and release any held lock and port allocations.
    */
   remove(projectPath: string, clientId: string = SessionManager.DEFAULT_CLIENT): void {
     const k = this.key(clientId, projectPath);
+    const session = this.sessions.get(k);
+    if (session) {
+      PortAllocator.instance.releaseSession(session.runId);
+    }
     this.mutex.release(k);
     this.sessions.delete(k);
   }
@@ -307,10 +351,11 @@ export class SessionManager {
 
     for (const [key, session] of this.sessions) {
       if (now - session.lastAccessedAt > this.ttlMs) {
-        // Best-effort cleanup of mock servers
+        // Best-effort cleanup of mock servers and port allocations
         for (const [, mock] of session.mockServers) {
           mock.server.close().catch(() => {});
         }
+        PortAllocator.instance.releaseSession(session.runId);
         this.mutex.release(key);
         this.sessions.delete(key);
         expired.push(key);
@@ -334,6 +379,7 @@ export class SessionManager {
       for (const [, mock] of session.mockServers) {
         mock.server.close().catch(() => {});
       }
+      PortAllocator.instance.releaseSession(session.runId);
       session.activeGuardians.clear();
       try { session.knowledgeStore?.close(); } catch { /* ignore */ }
       try { session.historyStore?.close(); } catch { /* ignore */ }

@@ -343,7 +343,7 @@ claude plugin install argusai
 ```
 
 安装后 AI 自动获得：
-- 9 个 MCP 工具（构建、启动、测试、日志等全流程）
+- 20 个 MCP 工具（构建、启动、测试、日志、历史趋势、智能诊断、OpenAPI Mock 等全流程）
 - `/run-tests` 和 `/init-e2e` 斜杠命令
 - 自动触发的 Skill（检测到 e2e.yaml 或用户说"跑测试"时激活）
 
@@ -364,7 +364,9 @@ claude plugin install argusai
 
 ### AI 可用的工具
 
-配置后，AI 助手可以使用以下工具：
+配置后，AI 助手可以使用以下 20 个工具：
+
+**核心测试流程：**
 
 | 工具名 | 说明 | 典型场景 |
 |--------|------|----------|
@@ -378,13 +380,44 @@ claude plugin install argusai
 | `argus_clean` | 清理资源 | 测试完成后 |
 | `argus_mock_requests` | 查看 Mock 录制 | 验证请求是否正确 |
 
+**韧性与自愈：**
+
+| 工具名 | 说明 | 典型场景 |
+|--------|------|----------|
+| `argus_preflight_check` | 环境预检 | Docker/磁盘/孤儿资源诊断 |
+| `argus_reset_circuit` | 重置熔断器 | Docker 恢复后解除熔断 |
+
+**历史与趋势：**
+
+| 工具名 | 说明 | 典型场景 |
+|--------|------|----------|
+| `argus_history` | 历史运行记录 | 查看最近测试结果 |
+| `argus_trends` | 趋势数据 | 通过率/时长变化趋势 |
+| `argus_flaky` | Flaky 排行榜 | 识别不稳定测试 |
+| `argus_compare` | 运行对比 | 对比两次运行差异 |
+
+**智能诊断：**
+
+| 工具名 | 说明 | 典型场景 |
+|--------|------|----------|
+| `argus_diagnose` | 失败诊断 | 自动分类 + 知识库匹配 + 修复建议 |
+| `argus_report_fix` | 回报修复 | 修复成功后反馈知识库 |
+| `argus_patterns` | 失败模式库 | 查看已知失败模式 |
+
+**OpenAPI Mock：**
+
+| 工具名 | 说明 | 典型场景 |
+|--------|------|----------|
+| `argus_mock_generate` | 生成 Mock 配置 | 从 OpenAPI spec 自动生成 |
+| `argus_mock_validate` | Mock 覆盖度检查 | 确认 Mock 覆盖所有端点 |
+
 ### 使用场景
 
 开发者在 Cursor 中修改代码后，AI 助手可以自动：
 1. 构建新镜像
 2. 启动测试环境
 3. 执行相关测试套件
-4. 分析测试结果
+4. 分析测试结果（如失败，自动诊断并查询历史模式）
 5. 清理环境
 
 ---
