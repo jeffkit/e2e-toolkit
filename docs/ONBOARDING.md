@@ -1,6 +1,6 @@
 # ArgusAI 业务接入指南
 
-> 最后更新：2026-02-26
+> 最后更新：2026-02-27
 
 本文档面向希望使用 ArgusAI 进行 E2E 测试的业务团队，覆盖从环境准备到 CI 接入的完整流程。
 
@@ -343,7 +343,7 @@ claude plugin install argusai
 ```
 
 安装后 AI 自动获得：
-- 20 个 MCP 工具（构建、启动、测试、日志、历史趋势、智能诊断、OpenAPI Mock 等全流程）
+- 21 个 MCP 工具（构建、启动、测试、日志、历史趋势、智能诊断、OpenAPI Mock、多项目隔离等全流程）
 - `/run-tests` 和 `/init-e2e` 斜杠命令
 - 自动触发的 Skill（检测到 e2e.yaml 或用户说"跑测试"时激活）
 
@@ -364,7 +364,7 @@ claude plugin install argusai
 
 ### AI 可用的工具
 
-配置后，AI 助手可以使用以下 20 个工具：
+配置后，AI 助手可以使用以下 21 个工具：
 
 **核心测试流程：**
 
@@ -410,6 +410,12 @@ claude plugin install argusai
 |--------|------|----------|
 | `argus_mock_generate` | 生成 Mock 配置 | 从 OpenAPI spec 自动生成 |
 | `argus_mock_validate` | Mock 覆盖度检查 | 确认 Mock 覆盖所有端点 |
+
+**多项目隔离：**
+
+| 工具名 | 说明 | 典型场景 |
+|--------|------|----------|
+| `argus_resources` | 全局资源视图 | 查看所有项目的容器/网络/端口占用，排查资源冲突 |
 
 ### 使用场景
 
@@ -475,6 +481,57 @@ curl http://localhost:9081/_mock/requests
 
 # 或在 Dashboard 中查看
 argusai dashboard
+```
+
+### Q: 多个项目同时测试会端口冲突吗？
+
+不会。ArgusAI 采用项目命名空间隔离：
+
+- 每个项目的 Docker 网络默认命名为 `argusai-<project>-network`，互不干扰
+- 内置 `PortAllocator` 进程级端口注册中心，并发 setup 时跨项目协调端口分配，消除端口抢占
+- 可通过 `isolation.portRange` 给不同项目划分专属端口段：
+
+```yaml
+# 项目 A
+isolation:
+  portRange: [9000, 9099]
+
+# 项目 B
+isolation:
+  portRange: [9100, 9199]
+```
+
+用 `argus_resources`（MCP 工具）或 `argusai status` 可查看全局资源占用情况。
+
+### Q: 已经有 docker-compose 管理容器，可以只用 ArgusAI 跑测试吗？
+
+可以。使用**纯测试模式（test-only mode）**：只保留 `tests` 配置，不定义 `service`/`services`，同时禁用 preflight 检查：
+
+```yaml
+version: "1"
+project:
+  name: my-stack
+
+resilience:
+  preflight:
+    enabled: false
+
+tests:
+  suites:
+    - name: Health Check
+      id: health
+      file: tests/health.yaml
+```
+
+测试文件中直接使用完整 URL：
+```yaml
+cases:
+  - name: "服务健康检查"
+    request:
+      method: GET
+      url: http://localhost:3000/health
+    expect:
+      status: 200
 ```
 
 ### Q: 支持多服务编排吗？

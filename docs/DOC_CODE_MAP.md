@@ -21,3 +21,7 @@
 | `specs/006-openapi-mock/spec.md` | `packages/core/src/openapi/**` | OpenAPI 智能 Mock 功能规格 |
 | `specs/006-openapi-mock/plan.md` | `packages/core/src/openapi/**`, `packages/core/src/mock-generator.ts`, `packages/mcp/src/tools/mock-generate.ts`, `packages/mcp/src/tools/mock-validate.ts` | OpenAPI Mock 实现计划 |
 | `specs/006-openapi-mock/tasks.md` | `packages/core/src/openapi/**`, `packages/core/src/mock-generator.ts`, `packages/mcp/src/**` | OpenAPI Mock 任务清单 |
+| `README.md` | `packages/core/src/port-allocator.ts`, `packages/mcp/src/tools/resources.ts`, `packages/mcp/src/session.ts`, `packages/core/src/types.ts`, `packages/core/src/config-loader.ts` | 多项目隔离功能文档（README 多项目隔离章节） |
+| `docs/ONBOARDING.md` | `packages/core/src/port-allocator.ts`, `packages/mcp/src/tools/resources.ts`, `packages/mcp/src/session.ts` | 业务接入指南（多项目隔离 Q&A 章节） |
+| `argusai-marketplace/argusai/skills/argusai-e2e/SKILL.md` | `packages/mcp/src/tools/resources.ts`, `packages/mcp/src/session.ts` | argusai-e2e 运行技能（多项目隔离与纯测试模式章节） |
+| `argusai-marketplace/argusai/skills/argusai-author/SKILL.md` | `packages/core/src/config-loader.ts`, `packages/core/src/types.ts` | argusai-author 配置创作技能（isolation/test-only 配置选项） |

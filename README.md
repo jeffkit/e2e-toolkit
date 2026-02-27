@@ -17,7 +17,9 @@ ArgusAI 是一个声明式的 E2E 测试框架，通过 YAML 配置文件描述�
 - **测试持久化与趋势分析** — SQLite 持久化测试结果，Flaky Test 识别，通过率/时长趋势分析
 - **智能诊断建议** — 失败自动分类、错误签名匹配、修复知识库、置信度评分、修复反馈闭环
 - **可视化 Dashboard** — 实时查看测试执行状态、容器日志、Mock 请求录制、趋势分析
-- **MCP Server** — AI 原生集成，让 Cursor/Claude 等编程助手直接运行 E2E 测试（20 个工具）
+- **多项目隔离** — 进程级端口注册中心（`PortAllocator`）+ 项目命名空间网络（`argusai-<project>-network`），多项目并发运行互不干扰
+- **纯测试模式** — 无需定义任何 `service`，直接对外部容器（如 docker-compose 编排的服务）跑 YAML 测试套件
+- **MCP Server** — AI 原生集成，让 Cursor/Claude 等编程助手直接运行 E2E 测试（21 个工具）
 - **CI/CD 模板** — 提供 GitLab CI 和 GitHub Actions 开箱即用模板
 
 ## 环境要求
@@ -246,9 +248,24 @@ dashboard:
   port: 9095                      # API 端口（默认 9095）
   uiPort: 9091                   # UI 端口（默认 9091）
 
-# ============ Docker 网络 ============
+# ============ Docker 网络（可选） ============
+# 默认网络名：argusai-<project-slug>-network（项目隔离）
+# 手动指定时覆盖默认值：
 network:
-  name: e2e-network
+  name: my-custom-network
+
+# ============ 多项目隔离（可选） ============
+isolation:
+  namespace: my-project        # 自定义 Docker 资源前缀（默认从 project.name 推导）
+  portRange: [9000, 9999]      # 端口自动分配范围（默认 [9000, 9999]）
+
+# ============ 纯测试模式（可选） ============
+# 不定义 service/services 时，ArgusAI 仅执行测试，跳过 Docker 构建/启动。
+# 适用于对外部编排容器（如 docker-compose up）执行 YAML 测试的场景。
+# 须同时禁用 preflight：
+resilience:
+  preflight:
+    enabled: false
 
 # ============ 测试持久化（可选） ============
 history:
@@ -661,6 +678,8 @@ argusai/
 │   │           ├── response-generator.ts # 响应体生成
 │   │           ├── request-validator.ts # 请求 schema 验证
 │   │           └── recorder.ts       #   录制/回放引擎
+│   │       ├── port-allocator.ts     # 进程级端口注册中心（多项目隔离）
+│   │       └── resource-limiter.ts   # 并发资源控制
 │   │
 │   ├── cli/              # CLI 工具（argusai）
 │   ├── dashboard/        # 可视化面板（argusai-dashboard）
@@ -738,6 +757,25 @@ AI Agent 使用场景：测试失败 → 查询 flaky score → 判断是否为�
 | **反馈闭环** | Agent 修复成功后通过 `argus_report_fix` 反馈，持续提升知识库质量 |
 
 AI Agent 使用场景：测试失败 → `argus_diagnose` 自动分类 → 匹配知识库 → 获取修复建议和置信度 → 修复后反馈。
+
+## 多项目隔离
+
+支持多个项目在同一台机器、同一 MCP Server 实例下并发运行，互不干扰。
+
+| 能力 | 说明 |
+|------|------|
+| **项目命名空间网络** | 默认 Docker 网络名为 `argusai-<project-slug>-network`，不同项目使用各自独立的网络 |
+| **端口注册中心** | `PortAllocator` 进程级单例，并发 setup 时跨项目协调端口分配，消除端口抢占竞争 |
+| **自定义命名空间** | 通过 `isolation.namespace` 自定义资源前缀；`isolation.portRange` 指定可分配的端口范围 |
+| **资源全局视图** | `argus_resources` 工具查询所有 `argusai.managed=true` 的 Docker 容器和网络，按项目分组展示 |
+
+```yaml
+isolation:
+  namespace: my-project     # 可选，默认从 project.name 推导
+  portRange: [10000, 10999] # 可选，默认 [9000, 9999]
+```
+
+AI Agent 使用场景：`argus_resources` → 一眼看到哪些项目的哪些容器/网络还在跑 → 精准清理目标项目。
 
 ## OpenAPI 智能 Mock
 
