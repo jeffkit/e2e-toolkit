@@ -117,7 +117,7 @@ export function registerSetup(program: Command): void {
         for (const [name, mockConfig] of Object.entries(config.mocks)) {
           if (mockConfig.routes && mockConfig.routes.length > 0) {
             try {
-              const mockApp = createMockServer(mockConfig);
+              const mockApp = await createMockServer(mockConfig, { name });
               await mockApp.listen({ port: mockConfig.port, host: '0.0.0.0' });
               log(`${GREEN}✓${RESET}`, `Mock "${name}" on port ${mockConfig.port}`);
             } catch (err) {

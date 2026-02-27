@@ -61,13 +61,34 @@ export const MockRouteSchema = z.object({
   }).optional().describe('Conditional matching rules for request routing'),
 }).describe('Mock service route definition');
 
+/** Mock operating mode schema */
+export const MockModeSchema = z.enum(['auto', 'record', 'replay', 'smart']);
+
 /** Mock service configuration schema */
 export const MockServiceSchema = z.object({
   port: z.number().describe('Host port the mock server listens on'),
   containerPort: z.number().optional().describe('Container-internal port (for Docker network access)'),
-  routes: z.array(MockRouteSchema).optional().describe('Mock route definitions'),
+  routes: z.array(MockRouteSchema).optional()
+    .describe('Mock route definitions (backward compatible; acts as overrides when openapi is set)'),
   image: z.string().optional().describe('Pre-built Docker image (alternative to inline routes)'),
-}).describe('Mock service configuration');
+  openapi: z.string().optional()
+    .describe('Path to OpenAPI 3.x spec file (YAML or JSON), relative to e2e.yaml'),
+  mode: MockModeSchema.optional().default('auto')
+    .describe('Mock operating mode: auto, record, replay, smart'),
+  validate: z.boolean().optional().default(false)
+    .describe('Enable request validation against OpenAPI spec'),
+  target: z.string().url().optional()
+    .describe('Real API base URL for record mode proxying'),
+  recordingsDir: z.string().optional().default('.argusai/recordings')
+    .describe('Directory for storing recorded request/response pairs'),
+  maxDepth: z.number().min(1).max(10).optional().default(3)
+    .describe('Maximum nesting depth for circular $ref resolution'),
+  overrides: z.array(MockRouteSchema).optional()
+    .describe('Manual override routes that take precedence over auto-generated routes'),
+}).refine(
+  (data) => data.mode !== 'record' || data.target !== undefined,
+  { message: 'target is required when mode is "record"', path: ['target'] },
+).describe('Mock service configuration');
 
 /** Retry policy schema */
 export const RetryPolicySchema = z.object({
@@ -170,6 +191,34 @@ export const ResilienceConfigSchema = z.object({
 }).default({}).describe('Resilience subsystem configuration — error recovery, preflight, circuit breaker');
 
 // =====================================================================
+// History Configuration Schema
+// =====================================================================
+
+/** History subsystem Zod schema with sensible defaults for persistence and flaky detection. */
+export const HistoryConfigSchema = z.object({
+  enabled: z.boolean().default(true).describe('Enable test result persistence'),
+  storage: z.enum(['local', 'memory']).default('local').describe('Storage backend: local SQLite or in-memory'),
+  path: z.string().optional().describe('Custom SQLite database file path'),
+  retention: z.object({
+    maxAge: z.string().default('90d').describe('Maximum age of retained runs (e.g. "90d")'),
+    maxRuns: z.number().min(10).max(100000).default(1000).describe('Maximum number of runs to retain'),
+  }).default({}).describe('Retention policy configuration'),
+  flakyWindow: z.number().min(2).max(100).default(10).describe('Number of recent runs for flaky detection window'),
+}).default({}).describe('Test result history persistence and flaky detection configuration');
+
+// =====================================================================
+// Isolation Configuration Schema
+// =====================================================================
+
+/** Multi-project isolation Zod schema. */
+export const IsolationConfigSchema = z.object({
+  namespace: z.string().optional()
+    .describe('Custom namespace prefix for Docker resources (containers, networks). Defaults to a slug of the project name.'),
+  portRange: z.tuple([z.number().min(1024).max(65535), z.number().min(1024).max(65535)]).optional()
+    .describe('Port allocation range [start, end] (inclusive) for auto-assignment. Defaults to [9000, 9999].'),
+}).optional().describe('Multi-project isolation and resource namespace configuration');
+
+// =====================================================================
 // Complete E2E Configuration Schema
 // =====================================================================
 
@@ -197,6 +246,8 @@ export const E2EConfigSchema = z.object({
   network: NetworkSchema.optional().describe('Docker network configuration'),
   repos: z.array(RepoConfigSchema).optional().describe('Git repositories for branch selection and builds'),
   resilience: ResilienceConfigSchema.optional().describe('Resilience subsystem — error recovery, preflight, circuit breaker'),
+  history: HistoryConfigSchema.optional().describe('Test result history persistence and flaky detection'),
+  isolation: IsolationConfigSchema.describe('Multi-project isolation — namespace, port range'),
 }).describe('Preflight E2E test configuration');
 
 /** Validated configuration type inferred from the Zod schema */

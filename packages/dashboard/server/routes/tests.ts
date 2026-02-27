@@ -9,7 +9,8 @@ import { type FastifyPluginAsync } from 'fastify';
 import { spawn } from 'child_process';
 import path from 'path';
 import type { E2EConfig, TestSuiteConfig, TestEvent } from 'argusai-core';
-import { loadYAMLTests, executeYAMLSuite } from 'argusai-core';
+import { loadYAMLTests, executeYAMLSuite, HistoryRecorder, HistoryConfigSchema } from 'argusai-core';
+import type { RunInput } from 'argusai-core';
 import { getAppState, addActivity, updateActivity } from '../app-state.js';
 
 /** 去除 ANSI 转义码 */
@@ -150,6 +151,8 @@ export const testRoutes: FastifyPluginAsync = async (app) => {
             testHistory.unshift(currentTest);
             if (testHistory.length > 50) testHistory.length = 50;
             updateActivity(activityId, { status: hasFailure ? 'failed' : 'success', endTime: Date.now() });
+
+            recordDashboardRun(currentTest, suiteId, config);
             currentTest = null;
           }
         } catch (err) {
@@ -406,3 +409,54 @@ export const testRoutes: FastifyPluginAsync = async (app) => {
     });
   });
 };
+
+function recordDashboardRun(
+  test: TestResult,
+  suiteId: string,
+  config: E2EConfig | null,
+): void {
+  try {
+    const appState = getAppState();
+    if (!appState.historyStore || !config) return;
+
+    const rawHistory = (config as unknown as Record<string, unknown>)['history'];
+    const historyConfig = HistoryConfigSchema.parse(rawHistory ?? {});
+    if (!historyConfig.enabled) return;
+
+    const recorder = new HistoryRecorder(appState.historyStore, historyConfig);
+    const duration = (test.endTime ?? Date.now()) - test.startTime;
+    const status = test.status === 'passed' ? 'passed' as const : 'failed' as const;
+
+    const runInput: RunInput = {
+      status,
+      duration,
+      totals: { passed: status === 'passed' ? 1 : 0, failed: status === 'failed' ? 1 : 0, skipped: 0 },
+      suites: [{
+        id: suiteId,
+        name: suiteId,
+        status,
+        duration,
+        passed: status === 'passed' ? 1 : 0,
+        failed: status === 'failed' ? 1 : 0,
+        skipped: 0,
+        cases: [{
+          name: `${suiteId} (dashboard run)`,
+          suite: suiteId,
+          status,
+          duration,
+          timestamp: test.startTime,
+        }],
+      }],
+    };
+
+    recorder.recordRun(
+      runInput,
+      config.project.name,
+      appState.configDir,
+      appState.configPath ?? '',
+      'dashboard',
+    );
+  } catch {
+    // Graceful degradation: recording failure must not affect dashboard
+  }
+}

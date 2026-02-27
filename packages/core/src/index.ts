@@ -110,6 +110,10 @@ export type {
 
 // Mock Generator
 export { createMockServer, resolveResponseTemplate } from './mock-generator.js';
+export type { CreateMockServerOptions } from './mock-generator.js';
+
+// OpenAPI Smart Mock Subsystem
+export * from './openapi/index.js';
 
 // SSE Bus
 export { EventBus, createEventBus } from './sse-bus.js';
@@ -126,6 +130,10 @@ export type {
   ProjectResourceState,
   ResourceLimiterOptions,
 } from './resource-limiter.js';
+
+// Port Allocator (multi-project isolation)
+export { PortAllocator } from './port-allocator.js';
+export type { PortClaim, PortAllocatorOptions } from './port-allocator.js';
 
 // Runtime (container execution abstraction)
 export {
@@ -176,6 +184,13 @@ export { ConsoleReporter, JSONReporter, HTMLReporter } from './reporter.js';
 
 // Resilience Subsystem
 export * from './resilience/index.js';
+
+// History Subsystem
+export * from './history/index.js';
+export { HistoryConfigSchema } from './config-loader.js';
+
+// Knowledge Subsystem (Diagnostics & Suggestions)
+export * from './knowledge/index.js';
 
 // Workspace Manager
 export {

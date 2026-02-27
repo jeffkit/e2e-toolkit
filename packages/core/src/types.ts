@@ -1,3 +1,28 @@
+// ==================== History Types (re-exported) ====================
+
+import type { HistoryConfig as _HistoryConfig } from './history/types.js';
+
+export type {
+  TriggerSource,
+  StabilityLevel,
+  TestRunRecord,
+  TestCaseRunRecord,
+  FlakyInfo,
+  RunComparison,
+  ComparisonItem,
+  TrendDataPoint,
+  HistoryConfig,
+} from './history/types.js';
+
+// ==================== Knowledge Types (re-exported) ====================
+
+export type {
+  FailureCategory,
+  FailurePattern,
+  FixRecord,
+  DiagnosticResult,
+} from './knowledge/types.js';
+
 // ==================== 配置类型 ====================
 
 /** 健康检查配置 */
@@ -65,6 +90,9 @@ export interface MockRouteConfig {
   };
 }
 
+/** Mock operating mode for OpenAPI-backed mocks */
+export type MockMode = 'auto' | 'record' | 'replay' | 'smart';
+
 /** Mock 服务配置 */
 export interface MockServiceConfig {
   /** 宿主机端口 */
@@ -75,6 +103,20 @@ export interface MockServiceConfig {
   routes?: MockRouteConfig[];
   /** 或使用已有镜像 */
   image?: string;
+  /** Path to OpenAPI 3.x spec file (YAML or JSON), relative to e2e.yaml */
+  openapi?: string;
+  /** Mock operating mode: auto, record, replay, smart */
+  mode?: MockMode;
+  /** Enable request validation against OpenAPI spec */
+  validate?: boolean;
+  /** Real API base URL for record mode proxying */
+  target?: string;
+  /** Directory for storing recorded request/response pairs */
+  recordingsDir?: string;
+  /** Maximum nesting depth for circular $ref resolution */
+  maxDepth?: number;
+  /** Manual override routes that take precedence over auto-generated routes */
+  overrides?: MockRouteConfig[];
 }
 
 /** 测试套件配置 */
@@ -161,6 +203,28 @@ export interface E2EConfig {
   repos?: RepoConfig[];
   /** Resilience subsystem configuration (error recovery, preflight, circuit breaker) */
   resilience?: ResilienceConfig;
+  /** History subsystem configuration (test result persistence, flaky detection) */
+  history?: _HistoryConfig;
+  /** Multi-project isolation configuration */
+  isolation?: IsolationConfig;
+}
+
+// ==================== Isolation Config ====================
+
+/** Multi-project isolation and resource namespace configuration. */
+export interface IsolationConfig {
+  /**
+   * Custom namespace prefix for Docker resources (containers, networks).
+   * Defaults to a slug derived from the project name.
+   * Used to prevent resource name collisions when multiple projects run simultaneously.
+   */
+  namespace?: string;
+  /**
+   * Port allocation range [start, end] (inclusive) for auto-assignment.
+   * When PortResolver needs to reassign a conflicting port, it picks from this range.
+   * Defaults to [9000, 9999].
+   */
+  portRange?: [number, number];
 }
 
 // ==================== Resilience Config ====================
@@ -594,6 +658,9 @@ export type SetupEvent =
   | { type: 'network_created'; name: string; timestamp: number }
   | { type: 'mock_starting'; name: string; port: number; timestamp: number }
   | { type: 'mock_started'; name: string; port: number; timestamp: number }
+  | { type: 'mock_openapi_parsed'; name: string; endpoints: number; specVersion: string; timestamp: number }
+  | { type: 'mock_validation_error'; name: string; method: string; path: string; errors: unknown[]; timestamp: number }
+  | { type: 'mock_recording_saved'; name: string; method: string; path: string; timestamp: number }
   | { type: 'service_starting'; name: string; image: string; timestamp: number }
   | { type: 'service_healthy'; name: string; duration: number; timestamp: number }
   | { type: 'setup_end'; duration: number; success: boolean; error?: string; timestamp: number };

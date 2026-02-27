@@ -50,7 +50,7 @@ describe('mock-generator', () => {
           },
         ],
       };
-      app = createMockServer(config);
+      app = await createMockServer(config);
       await app.ready();
     });
 
@@ -110,7 +110,7 @@ describe('mock-generator', () => {
           },
         ],
       };
-      app = createMockServer(config);
+      app = await createMockServer(config);
       await app.ready();
     });
 
@@ -170,7 +170,7 @@ describe('mock-generator', () => {
 
   describe('empty config', () => {
     it('should create a server with no routes', async () => {
-      const app = createMockServer({ port: 9090 });
+      const app = await createMockServer({ port: 9090 });
       await app.ready();
 
       const res = await app.inject({ method: 'GET', url: '/_mock/health' });
@@ -200,7 +200,7 @@ describe('mock-generator', () => {
           },
         ],
       };
-      const app = createMockServer(config);
+      const app = await createMockServer(config);
       await app.ready();
 
       const defaultRes = await app.inject({
@@ -235,7 +235,7 @@ describe('mock-generator', () => {
           },
         ],
       };
-      const app = createMockServer(config);
+      const app = await createMockServer(config);
       await app.ready();
 
       const fastRes = await app.inject({
@@ -266,7 +266,7 @@ describe('mock-generator', () => {
           },
         ],
       };
-      const app = createMockServer(config);
+      const app = await createMockServer(config);
       await app.ready();
 
       const start = Date.now();
@@ -352,13 +352,13 @@ describe('mock-generator', () => {
   describe('per-instance startTime (regression)', () => {
     it('should report independent uptime for each mock server', async () => {
       const config1: MockServiceConfig = { port: 9091, routes: [] };
-      const app1 = createMockServer(config1);
+      const app1 = await createMockServer(config1);
       await app1.ready();
 
       await new Promise<void>((resolve) => setTimeout(resolve, 100));
 
       const config2: MockServiceConfig = { port: 9092, routes: [] };
-      const app2 = createMockServer(config2);
+      const app2 = await createMockServer(config2);
       await app2.ready();
 
       const res1 = await app1.inject({ method: 'GET', url: '/_mock/health' });

@@ -101,11 +101,16 @@ export async function handleSetup(
   });
   bus?.emit('setup', { event: 'setup_start', data: { type: 'setup_start', project: config.project.name, timestamp: ts() } });
 
-  // Preflight health check gate
+  const orchestrator = new MultiServiceOrchestrator();
+  let services = orchestrator.normalizeServices(config);
+  let mocks = config.mocks ?? {};
+  const hasInfrastructure = services.length > 0 || Object.keys(mocks).length > 0;
+
+  // Preflight health check gate (skip in test-only mode with no services/mocks)
   let preflightReport: HealthReport | undefined;
   let orphanCleanupResult: OrphanCleanupResult | undefined;
   const resilienceConfig = config.resilience;
-  if (resilienceConfig?.preflight?.enabled !== false) {
+  if (hasInfrastructure && resilienceConfig?.preflight?.enabled !== false) {
     const preflightConfig = resilienceConfig?.preflight ?? { enabled: true, diskSpaceThreshold: '2GB', cleanOrphans: true };
     const checker = new PreflightChecker(bus);
     preflightReport = await checker.runAll(preflightConfig, config.project.name, session.runId);
@@ -121,15 +126,11 @@ export async function handleSetup(
       orphanCleanupResult = await cleaner.detectAndCleanup();
     }
   }
-
-  const orchestrator = new MultiServiceOrchestrator();
-  let services = orchestrator.normalizeServices(config);
-  let mocks = config.mocks ?? {};
   let portMappings: PortMapping[] | undefined;
 
   // Port conflict resolution
   const portStrategy = resilienceConfig?.network?.portConflictStrategy ?? 'auto';
-  if (services.length > 0 || Object.keys(mocks).length > 0) {
+  if (hasInfrastructure) {
     const resolver = new PortResolver(portStrategy, bus);
     const resolved = await resolver.resolveServicePorts(services, mocks);
     services = resolved.services;
@@ -166,7 +167,7 @@ export async function handleSetup(
         }
 
         bus?.emit('setup', { event: 'mock_starting', data: { type: 'mock_starting', name, port: mc.port, timestamp: ts() } });
-        const mockServer = createMockServer(mc);
+        const mockServer = await createMockServer(mc, { name, eventBus: bus });
         await mockServer.listen({ port: mc.port, host: '0.0.0.0' });
         session.mockServers.set(name, { server: mockServer, port: mc.port });
         bus?.emit('setup', { event: 'mock_started', data: { type: 'mock_started', name, port: mc.port, timestamp: ts() } });
@@ -240,7 +241,7 @@ export async function handleSetup(
   const allHealthy = serviceResults.every(
     s => s.status !== 'failed' && s.status !== 'unhealthy',
   );
-  if (allHealthy && serviceResults.length > 0) {
+  if (allHealthy) {
     sessionManager.transition(params.projectPath, 'running');
   }
 

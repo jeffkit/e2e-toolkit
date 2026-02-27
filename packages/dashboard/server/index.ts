@@ -11,7 +11,7 @@ import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { loadConfig, createEventBus, EventBus, type E2EConfig, type Store, type TaskQueue, type Notifier, type ResourceLimiter } from 'argusai-core';
+import { loadConfig, createEventBus, EventBus, createHistoryStore, HistoryConfigSchema, type E2EConfig, type Store, type TaskQueue, type Notifier, type ResourceLimiter } from 'argusai-core';
 import { initAppState, getAppState, type AppState } from './app-state.js';
 import { addProject, loadRegistry, getActiveProject } from './project-registry.js';
 import { dockerRoutes } from './routes/docker.js';
@@ -19,6 +19,7 @@ import { proxyRoutes } from './routes/proxy.js';
 import { testRoutes } from './routes/tests.js';
 import { configRoutes } from './routes/config.js';
 import { projectRoutes } from './routes/projects.js';
+import { historyRoutes } from './routes/history.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -51,10 +52,35 @@ async function loadProjectConfig(configPath: string, appState: AppState): Promis
     appState.configDir = path.dirname(absPath);
     appState.configPath = absPath;
     console.log(`[config] Loaded e2e.yaml for project: ${config.project.name}`);
+    initializeHistoryStore(appState);
     return true;
   } catch (err) {
     console.warn(`[config] Failed to load ${configPath}: ${err instanceof Error ? err.message : String(err)}`);
     return false;
+  }
+}
+
+function initializeHistoryStore(appState: AppState): void {
+  if (appState.historyStore) {
+    try { appState.historyStore.close(); } catch { /* ignore */ }
+    appState.historyStore = undefined;
+  }
+
+  if (!appState.config) return;
+
+  try {
+    const rawHistory = (appState.config as unknown as Record<string, unknown>)['history'];
+    const historyConfig = HistoryConfigSchema.parse(rawHistory ?? {});
+
+    if (!historyConfig.enabled) {
+      console.log('[history] History is disabled in configuration');
+      return;
+    }
+
+    appState.historyStore = createHistoryStore(historyConfig, appState.configDir);
+    console.log(`[history] Initialized history store (${historyConfig.storage} mode)`);
+  } catch (err) {
+    console.warn(`[history] Failed to initialize history store: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 
@@ -76,6 +102,10 @@ export async function createDashboardApp(options?: DashboardOptions): Promise<{ 
     notifier: options?.notifier,
     resourceLimiter: options?.resourceLimiter,
   });
+
+  if (appState.config) {
+    initializeHistoryStore(appState);
+  }
 
   if (!appState.config) {
     const envConfigPath = process.env.E2E_CONFIG || undefined;
@@ -105,6 +135,7 @@ export async function createDashboardApp(options?: DashboardOptions): Promise<{ 
   await app.register(proxyRoutes, { prefix: '/api/proxy' });
   await app.register(testRoutes, { prefix: '/api/tests' });
   await app.register(configRoutes, { prefix: '/api/config' });
+  await app.register(historyRoutes, { prefix: '/api' });
 
   // Unified SSE event stream — delivers all EventBus events to the browser
   app.get('/api/events', async (request, reply) => {

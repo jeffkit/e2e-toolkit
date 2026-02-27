@@ -1,0 +1,107 @@
+{
+  "name": "argus_mock_generate",
+  "description": "Generate a ready-to-use e2e.yaml mock configuration snippet from an OpenAPI 3.x spec file. Parses the spec, extracts all endpoints, and produces YAML that can be pasted directly into the mocks section of e2e.yaml.",
+  "inputSchema": {
+    "type": "object",
+    "properties": {
+      "projectPath": {
+        "type": "string",
+        "description": "Absolute path to project directory containing e2e.yaml"
+      },
+      "specPath": {
+        "type": "string",
+        "description": "Path to OpenAPI 3.x spec file (YAML or JSON). Absolute or relative to projectPath."
+      },
+      "mockName": {
+        "type": "string",
+        "description": "Name for the generated mock service (used as key in mocks section). Default: derived from spec info.title."
+      },
+      "port": {
+        "type": "number",
+        "description": "Port number for the mock server. Default: 9090."
+      },
+      "mode": {
+        "type": "string",
+        "enum": ["auto", "record", "replay", "smart"],
+        "description": "Mock operating mode. Default: auto."
+      },
+      "validate": {
+        "type": "boolean",
+        "description": "Enable request validation in generated config. Default: false."
+      },
+      "target": {
+        "type": "string",
+        "description": "Real API base URL (required when mode is 'record')."
+      }
+    },
+    "required": ["projectPath", "specPath"]
+  },
+  "outputSchema": {
+    "type": "object",
+    "properties": {
+      "success": { "type": "boolean" },
+      "data": {
+        "type": "object",
+        "properties": {
+          "yaml": {
+            "type": "string",
+            "description": "Generated YAML configuration snippet ready to paste into e2e.yaml mocks section"
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "specTitle": { "type": "string" },
+              "specVersion": { "type": "string" },
+              "totalEndpoints": { "type": "number" },
+              "methods": {
+                "type": "object",
+                "description": "Count of endpoints per HTTP method, e.g. { GET: 5, POST: 3 }",
+                "additionalProperties": { "type": "number" }
+              }
+            }
+          }
+        }
+      },
+      "timestamp": { "type": "number" }
+    }
+  },
+  "examples": [
+    {
+      "description": "Generate mock config from a payment API spec",
+      "input": {
+        "projectPath": "/home/dev/my-project",
+        "specPath": "specs/payment-api.yaml",
+        "port": 9090,
+        "mode": "auto",
+        "validate": true
+      },
+      "output": {
+        "success": true,
+        "data": {
+          "yaml": "mocks:\n  payment-api:\n    port: 9090\n    openapi: specs/payment-api.yaml\n    mode: auto\n    validate: true\n",
+          "summary": {
+            "specTitle": "Payment API",
+            "specVersion": "1.0.0",
+            "totalEndpoints": 8,
+            "methods": { "GET": 3, "POST": 4, "DELETE": 1 }
+          }
+        },
+        "timestamp": 1740672000000
+      }
+    }
+  ],
+  "errors": [
+    {
+      "code": "SPEC_NOT_FOUND",
+      "description": "The OpenAPI spec file does not exist at the given path"
+    },
+    {
+      "code": "SPEC_PARSE_ERROR",
+      "description": "The OpenAPI spec file is malformed or invalid"
+    },
+    {
+      "code": "SPEC_VALIDATION_ERROR",
+      "description": "The file is valid YAML/JSON but does not conform to OpenAPI 3.x"
+    }
+  ]
+}

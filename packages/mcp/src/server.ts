@@ -1,6 +1,6 @@
 /**
  * @module server
- * MCP server setup — registers all 11 preflight tools with Zod input schemas.
+ * MCP server setup — registers all 21 tools with Zod input schemas.
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -19,6 +19,16 @@ import { handleClean } from './tools/clean.js';
 import { handleMockRequests } from './tools/mock-requests.js';
 import { handlePreflightCheck } from './tools/preflight-check.js';
 import { handleResetCircuit } from './tools/reset-circuit.js';
+import { handleHistory } from './tools/history.js';
+import { handleTrends } from './tools/trends.js';
+import { handleFlaky } from './tools/flaky.js';
+import { handleCompare } from './tools/compare.js';
+import { handleDiagnose } from './tools/diagnose.js';
+import { handleReportFix } from './tools/report-fix.js';
+import { handlePatterns } from './tools/patterns.js';
+import { handleMockGenerate } from './tools/mock-generate.js';
+import { handleMockValidate } from './tools/mock-validate.js';
+import { handleResources } from './tools/resources.js';
 
 /** Shared platform services injected into tool handlers. */
 export interface PlatformServices {
@@ -75,7 +85,7 @@ function handleError(err: unknown): { content: Array<{ type: 'text'; text: strin
 }
 
 /**
- * Create and configure the MCP server with all 11 preflight tools registered.
+ * Create and configure the MCP server with all 20 tools registered.
  *
  * When called without options, creates standalone instances.
  * Pass shared `sessionManager` and `eventBus` to integrate with Dashboard.
@@ -284,6 +294,198 @@ export function createServer(options?: CreateServerOptions): {
     async (params) => {
       try {
         const result = await handleResetCircuit(params, sessionManager);
+        return successResponse(result);
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
+  // Tool 12: argus_history
+  server.tool(
+    'argus_history',
+    {
+      projectPath: z.string().describe('Project path (must have active session)'),
+      limit: z.number().optional().default(20).describe('Max number of runs to return (1-100)'),
+      status: z.enum(['passed', 'failed']).optional().describe('Filter by run status'),
+      days: z.number().optional().describe('Filter to runs within the last N days'),
+      offset: z.number().optional().default(0).describe('Pagination offset'),
+    },
+    async (params) => {
+      try {
+        const result = await handleHistory(params, sessionManager);
+        return successResponse(result);
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
+  // Tool 13: argus_trends
+  server.tool(
+    'argus_trends',
+    {
+      projectPath: z.string().describe('Project path'),
+      metric: z.enum(['pass-rate', 'duration', 'flaky']).describe('Metric to trend'),
+      days: z.number().optional().default(14).describe('Number of days to analyze (1-90)'),
+      suiteId: z.string().optional().describe('Filter to a specific suite'),
+    },
+    async (params) => {
+      try {
+        const result = await handleTrends(params, sessionManager);
+        return successResponse(result);
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
+  // Tool 14: argus_flaky
+  server.tool(
+    'argus_flaky',
+    {
+      projectPath: z.string().describe('Project path'),
+      topN: z.number().optional().default(10).describe('Number of flaky cases to return (1-50)'),
+      minScore: z.number().optional().default(0.01).describe('Minimum flaky score threshold (0-1)'),
+      suiteId: z.string().optional().describe('Filter to a specific suite'),
+    },
+    async (params) => {
+      try {
+        const result = await handleFlaky(params, sessionManager);
+        return successResponse(result);
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
+  // Tool 15: argus_compare
+  server.tool(
+    'argus_compare',
+    {
+      projectPath: z.string().describe('Project path'),
+      baseRunId: z.string().describe('ID of the base (earlier) run'),
+      compareRunId: z.string().describe('ID of the comparison (later) run'),
+    },
+    async (params) => {
+      try {
+        const result = await handleCompare(params, sessionManager);
+        return successResponse(result);
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
+  // Tool 16: argus_diagnose (knowledge base: classify + match + suggest)
+  server.tool(
+    'argus_diagnose',
+    {
+      projectPath: z.string().describe('Project path (must have active session with history enabled)'),
+      runId: z.string().describe('ID of the test run containing the failed case'),
+      caseName: z.string().describe('Name of the failed test case to diagnose'),
+    },
+    async (params) => {
+      try {
+        const result = await handleDiagnose(params, sessionManager);
+        return successResponse(result);
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
+  // Tool 17: argus_report_fix (knowledge base: record fix + update confidence)
+  server.tool(
+    'argus_report_fix',
+    {
+      projectPath: z.string().describe('Project path (must have active session with history enabled)'),
+      runId: z.string().describe('ID of the test run where the failure was originally diagnosed'),
+      caseName: z.string().describe('Name of the test case that was fixed'),
+      fixDescription: z.string().describe('Description of what was changed to fix the failure'),
+      success: z.boolean().optional().default(true).describe('Whether the fix resolved the failure (default: true)'),
+    },
+    async (params) => {
+      try {
+        const result = await handleReportFix(params, sessionManager);
+        return successResponse(result);
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
+  // Tool 18: argus_patterns (knowledge base: browse failure patterns)
+  server.tool(
+    'argus_patterns',
+    {
+      projectPath: z.string().describe('Project path (must have active session with history enabled)'),
+      category: z.enum([
+        'ASSERTION_MISMATCH', 'HTTP_ERROR', 'TIMEOUT', 'CONNECTION_REFUSED',
+        'CONTAINER_OOM', 'CONTAINER_CRASH', 'MOCK_MISMATCH', 'CONFIG_ERROR',
+        'NETWORK_ERROR', 'UNKNOWN',
+      ]).optional().describe('Filter patterns by failure category'),
+      source: z.enum(['built-in', 'learned']).optional().describe('Filter by pattern source'),
+      sortBy: z.enum(['confidence', 'occurrences', 'lastSeen']).optional().default('occurrences')
+        .describe('Sort order for results'),
+    },
+    async (params) => {
+      try {
+        const result = await handlePatterns(params, sessionManager);
+        return successResponse(result);
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
+  // Tool 19: argus_mock_generate
+  server.tool(
+    'argus_mock_generate',
+    {
+      projectPath: z.string().describe('Absolute path to project directory containing e2e.yaml'),
+      specPath: z.string().describe('Path to OpenAPI 3.x spec file (YAML or JSON). Absolute or relative to projectPath.'),
+      mockName: z.string().optional().describe('Name for the generated mock service. Default: derived from spec title.'),
+      port: z.number().optional().describe('Port number for the mock server. Default: 9090.'),
+      mode: z.enum(['auto', 'record', 'replay', 'smart']).optional().describe('Mock operating mode. Default: auto.'),
+      validate: z.boolean().optional().describe('Enable request validation in generated config. Default: false.'),
+      target: z.string().optional().describe('Real API base URL (required when mode is "record").'),
+    },
+    async (params) => {
+      try {
+        const result = await handleMockGenerate(params);
+        return successResponse(result);
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
+  // Tool 20: argus_mock_validate
+  server.tool(
+    'argus_mock_validate',
+    {
+      projectPath: z.string().describe('Absolute path to project directory containing e2e.yaml'),
+      mockName: z.string().optional().describe('Name of the mock service to validate. If omitted, validates all mocks with openapi field.'),
+      specPath: z.string().optional().describe('Override: path to OpenAPI spec file. If omitted, uses the openapi field from mock config.'),
+    },
+    async (params) => {
+      try {
+        const result = await handleMockValidate(params, sessionManager);
+        return successResponse(result);
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
+  // Tool 21: argus_resources (multi-project isolation — list all managed Docker resources)
+  server.tool(
+    'argus_resources',
+    {},
+    async () => {
+      try {
+        const result = await handleResources(sessionManager);
         return successResponse(result);
       } catch (err) {
         return handleError(err);

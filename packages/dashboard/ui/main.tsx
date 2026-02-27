@@ -9,9 +9,10 @@ import { TestsPage } from './pages/Tests'
 import { ProjectsPage } from './pages/Projects'
 import { ActivityPage } from './pages/Activity'
 import { PipelinePage } from './pages/Pipeline'
+import { TrendsPage } from './pages/TrendsPage'
 import { health, projects, type ProjectEntry } from './lib/api'
 
-type Page = 'activity' | 'pipeline' | 'projects' | 'build' | 'container' | 'logs' | 'api' | 'tests'
+type Page = 'activity' | 'pipeline' | 'projects' | 'build' | 'container' | 'logs' | 'api' | 'tests' | 'trends'
 
 function App() {
   const [page, setPage] = useState<Page>('activity')
@@ -74,6 +75,7 @@ function App() {
     logs: { label: '容器日志', icon: '📋', component: <LogsPage key={refreshKey} /> },
     api: { label: 'API 调试', icon: '🔌', component: <ApiExplorer key={refreshKey} /> },
     tests: { label: '测试套件', icon: '🧪', component: <TestsPage key={refreshKey} /> },
+    trends: { label: '趋势分析', icon: '📈', component: <TrendsPage key={refreshKey} /> },
   }
 
   return (

@@ -80,7 +80,7 @@ describe('schema-generator', () => {
 
     it('should validate a valid E2E config', () => {
       const schema = getE2EConfigJsonSchema();
-      const ajv = new Ajv({ allErrors: true });
+      const ajv = new Ajv({ allErrors: true, formats: { uri: true, 'uri-reference': true } });
       const validate = ajv.compile(schema);
 
       const validConfig = {
@@ -101,7 +101,7 @@ describe('schema-generator', () => {
 
     it('should reject config missing required project.name', () => {
       const schema = getE2EConfigJsonSchema();
-      const ajv = new Ajv({ allErrors: true });
+      const ajv = new Ajv({ allErrors: true, formats: { uri: true, 'uri-reference': true } });
       const validate = ajv.compile(schema);
 
       const invalidConfig = {
@@ -119,7 +119,7 @@ describe('schema-generator', () => {
 
     it('should reject config with invalid port type', () => {
       const schema = getE2EConfigJsonSchema();
-      const ajv = new Ajv({ allErrors: true });
+      const ajv = new Ajv({ allErrors: true, formats: { uri: true, 'uri-reference': true } });
       const validate = ajv.compile(schema);
 
       const invalidConfig = {
@@ -146,7 +146,7 @@ describe('schema-generator', () => {
 
     it('should validate a valid test suite config', () => {
       const schema = getTestSuiteJsonSchema();
-      const ajv = new Ajv({ allErrors: true });
+      const ajv = new Ajv({ allErrors: true, formats: { uri: true, 'uri-reference': true } });
       const validate = ajv.compile(schema);
 
       const validSuite = {
@@ -161,7 +161,7 @@ describe('schema-generator', () => {
 
     it('should validate suite with retry policy', () => {
       const schema = getTestSuiteJsonSchema();
-      const ajv = new Ajv({ allErrors: true });
+      const ajv = new Ajv({ allErrors: true, formats: { uri: true, 'uri-reference': true } });
       const validate = ajv.compile(schema);
 
       const suiteWithRetry = {
@@ -181,7 +181,7 @@ describe('schema-generator', () => {
 
     it('should reject suite missing required id', () => {
       const schema = getTestSuiteJsonSchema();
-      const ajv = new Ajv({ allErrors: true });
+      const ajv = new Ajv({ allErrors: true, formats: { uri: true, 'uri-reference': true } });
       const validate = ajv.compile(schema);
 
       const invalidSuite = { name: 'No ID' };
@@ -194,7 +194,7 @@ describe('schema-generator', () => {
 
     it('should reject retry with maxAttempts > 10', () => {
       const schema = getTestSuiteJsonSchema();
-      const ajv = new Ajv({ allErrors: true });
+      const ajv = new Ajv({ allErrors: true, formats: { uri: true, 'uri-reference': true } });
       const validate = ajv.compile(schema);
 
       const invalidSuite = {
