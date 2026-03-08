@@ -79,6 +79,7 @@ jobs:
         if: steps.check.outputs.has_changesets == 'false'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
         run: |
           PACKAGES=("core:argusai-core" "mcp:argusai-mcp" "cli:argusai-cli" "dashboard:argusai-dashboard")
           PUBLISHED=()
@@ -92,7 +93,7 @@ jobs:
             if [ "$LOCAL_VER" != "$NPM_VER" ]; then
               echo "📦 Publishing $NAME@$LOCAL_VER (npm has $NPM_VER)"
               cd "packages/$DIR"
-              npm publish --provenance --access public
+              pnpm publish --no-git-checks --access public
               cd ../..
               PUBLISHED+=("$NAME@$LOCAL_VER")
             else

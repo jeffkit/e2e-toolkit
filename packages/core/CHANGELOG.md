@@ -1,5 +1,15 @@
 # argusai-core
 
+## 0.5.2
+
+### Patch Changes
+
+- fix: resolve workspace protocol in npm publish
+
+  Fix CI publishing pipeline — switch from `npm publish` to `pnpm publish`
+  so that `workspace:*` references are automatically resolved to actual
+  version numbers before uploading to the registry.
+
 ## 0.5.1
 
 ### Patch Changes
