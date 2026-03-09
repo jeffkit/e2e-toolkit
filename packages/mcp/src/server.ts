@@ -1,6 +1,6 @@
 /**
  * @module server
- * MCP server setup — registers all 21 tools with Zod input schemas.
+ * MCP server setup — registers all 23 tools with Zod input schemas.
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -30,6 +30,7 @@ import { handleMockGenerate } from './tools/mock-generate.js';
 import { handleMockValidate } from './tools/mock-validate.js';
 import { handleResources } from './tools/resources.js';
 import { handleRebuild } from './tools/rebuild.js';
+import { handleDev } from './tools/dev.js';
 
 /** Shared platform services injected into tool handlers. */
 export interface PlatformServices {
@@ -506,6 +507,25 @@ export function createServer(options?: CreateServerOptions): {
     async (params) => {
       try {
         const result = await handleRebuild(params, sessionManager, platform);
+        return successResponse(result);
+      } catch (err) {
+        return handleError(err);
+      }
+    },
+  );
+
+  // Tool 23: argus_dev (one-step start for manual testing)
+  server.tool(
+    'argus_dev',
+    {
+      projectPath: z.string().describe('Absolute path to project directory containing e2e.yaml'),
+      configFile: z.string().optional().describe('Config filename override (default: e2e.yaml)'),
+      noCache: z.boolean().optional().describe('Disable Docker layer cache for build'),
+      skipBuild: z.boolean().optional().describe('Skip Docker build (reuse existing image)'),
+    },
+    async (params) => {
+      try {
+        const result = await handleDev(params, sessionManager, platform);
         return successResponse(result);
       } catch (err) {
         return handleError(err);

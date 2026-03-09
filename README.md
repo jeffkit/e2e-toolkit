@@ -543,6 +543,9 @@ ArgusAI 提供 MCP Server，让 AI 编程助手（如 Cursor、Claude Desktop）
 | `argus_patterns` | 查看/搜索失败模式知识库 |
 | `argus_mock_generate` | 从 OpenAPI spec 生成 Mock YAML 配置 |
 | `argus_mock_validate` | 验证 Mock 配置对 OpenAPI spec 的覆盖度 |
+| `argus_dev` | 一键启动项目供手动测试（init + build + setup，返回访问地址） |
+| `argus_rebuild` | 一键重建测试环境（clean + init + build + setup） |
+| `argus_resources` | 查看所有 ArgusAI 管理的 Docker 资源（跨项目） |
 
 ### AI 工作流示例
 
@@ -563,6 +566,12 @@ ArgusAI 提供 MCP Server，让 AI 编程助手（如 Cursor、Claude Desktop）
 argus_diagnose(projectPath, runId, caseName)  → 分类失败 + 匹配知识库 + 获取修复建议
 argus_flaky(projectPath)                       → 检查是否为 Flaky Test
 argus_report_fix(projectPath, runId, ...)      → 修复成功后反馈，提升知识库置信度
+```
+
+开发者想手动测试时，一键启动：
+```
+argus_dev(projectPath)       → 构建 + 启动环境，返回访问 URL（如有健康会话则直接复用）
+argus_clean(projectPath)     → 测试完毕后清理
 ```
 
 当 Docker 环境异常时，AI 可以：

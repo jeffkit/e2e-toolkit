@@ -25,3 +25,5 @@
 | `docs/ONBOARDING.md` | `packages/core/src/port-allocator.ts`, `packages/mcp/src/tools/resources.ts`, `packages/mcp/src/session.ts` | 业务接入指南（多项目隔离 Q&A 章节） |
 | `argusai-marketplace/argusai/skills/argusai-e2e/SKILL.md` | `packages/mcp/src/tools/resources.ts`, `packages/mcp/src/session.ts` | argusai-e2e 运行技能（多项目隔离与纯测试模式章节） |
 | `argusai-marketplace/argusai/skills/argusai-author/SKILL.md` | `packages/core/src/config-loader.ts`, `packages/core/src/types.ts` | argusai-author 配置创作技能（isolation/test-only 配置选项） |
+| `specs/003-evolution-roadmap/roadmap.md` | `packages/core/src/**`, `packages/mcp/src/**`, `packages/dashboard/**` | ArgusAI 进化路线图 |
+| `argusai-marketplace/argusai/skills/argusai-e2e/SKILL.md` | `packages/core/src/browser-executor.ts`, `packages/core/src/yaml-engine.ts`, `packages/core/src/types.ts` | argusai-e2e 运行技能（browser DSL 章节） |

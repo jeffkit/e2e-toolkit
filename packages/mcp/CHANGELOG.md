@@ -1,5 +1,48 @@
 # argusai-mcp
 
+## 0.7.0
+
+### Minor Changes
+
+- Add argus_dev tool for one-step project startup for manual testing. Combines init + build + setup into a single command, returns developer-friendly access URLs, and reuses healthy existing sessions.
+
+## 0.6.0
+
+### Minor Changes
+
+- feat: 新增 11 个 MCP 工具（11→22 tools）
+
+  **测试持久化与趋势 (004-history):**
+
+  - `argus_history` — 查询历史运行记录
+  - `argus_trends` — 获取趋势数据（通过率/执行时间/flaky）
+  - `argus_flaky` — Flaky Test 列表
+  - `argus_compare` — 对比两次运行
+
+  **智能诊断建议 (005-diagnostics):**
+
+  - `argus_diagnose` — 智能失败诊断（分类 + 模式匹配 + 修复建议）
+  - `argus_report_fix` — 回报修复结果到知识库
+  - `argus_patterns` — 浏览失败模式知识库
+
+  **OpenAPI 智能 Mock (006-openapi-mock):**
+
+  - `argus_mock_generate` — 从 OpenAPI spec 生成 Mock 配置
+  - `argus_mock_validate` — Mock 覆盖度检查
+
+  **多项目隔离 (⑦-L1):**
+
+  - `argus_resources` — 资源使用概览
+
+  **YAML 浏览器测试 DSL:**
+
+  - yaml-engine 自动检测 browser 步骤并懒初始化 Playwright 会话
+
+### Patch Changes
+
+- Updated dependencies
+  - argusai-core@0.6.0
+
 ## 0.5.2
 
 ### Patch Changes

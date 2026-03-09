@@ -1,8 +1,8 @@
 # ArgusAI Evolution Roadmap
 
 **Created**: 2026-02-26
-**Updated**: 2026-02-27
-**Status**: In Progress (5/6 directions completed)
+**Updated**: 2026-03-09
+**Status**: In Progress (5/6 directions completed + Browser DSL bonus)
 **Author**: AI Analysis + Human Review
 **Base**: 002-ai-native (all 110 tasks completed)
 
@@ -32,7 +32,8 @@ ArgusAI 已完成从 "人工操作的 CLI 工具" 到 "AI-Native 编程基础设
 | 第一波 | P1 | ⑦-L1 多项目隔离 | 基础设施可靠性 | ✅ 已完成 |
 | 第二波 | P2 | ④ 智能诊断建议 | AI 的诊断准确率 | ✅ 已完成 |
 | 第二波 | P2 | ⑤ OpenAPI 智能 Mock | Mock 体验与效率 | ✅ 已完成 |
-| 第二波 | P2 | ⑥-L1 性能预算 | 性能回归检测 | ⭕ 待开发 |
+| 第二波 | P2 | ⑧ YAML 浏览器测试 DSL | 声明式 UI E2E | ✅ 已完成 (v0.6.0) |
+| 第三波 | P2 | ⑥-L1 性能预算 | 性能回归检测 | ⭕ 待开发 |
 | 第三波 | P3 | ⑥-L2 负载测试 | 性能基准能力 | ⭕ 待开发 |
 | 第三波 | P3 | ⑦-L2 远程团队协作 | 团队规模化使用 | ⭕ 待开发 |
 
